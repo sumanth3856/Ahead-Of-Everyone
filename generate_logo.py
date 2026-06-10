@@ -1,0 +1,23 @@
+import os
+
+def generate_svg():
+    svg_content = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background -->
+  <rect width="200" height="200" fill="#1A1A1A" rx="40" />
+  
+  <!-- Neon Green Abstract 'A' / Upward Arrow -->
+  <path d="M 100 40 L 40 140 L 70 140 L 100 90 L 130 140 L 160 140 Z" fill="#39FF14" />
+  
+  <!-- White intersection accent -->
+  <path d="M 75 120 L 125 120 L 115 100 L 85 100 Z" fill="#FFFFFF" />
+  
+  <!-- Subtle shadow / depth -->
+  <path d="M 100 40 L 100 90 L 130 140 L 160 140 Z" fill="#24A10C" opacity="0.5"/>
+</svg>"""
+    
+    with open("logo.svg", "w") as f:
+        f.write(svg_content)
+    print("logo.svg generated.")
+
+if __name__ == "__main__":
+    generate_svg()
