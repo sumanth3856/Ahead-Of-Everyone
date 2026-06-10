@@ -47,26 +47,36 @@ JSON Schema:
 }
 Limit core_breakdown to exactly 3 or 4 points."""
 
-    try:
-        response = client.chat.completions.create(
-            model=config.OPENROUTER_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Title: {title}\nRaw Context: {raw_content}"}
-            ],
-            timeout=30,
-        )
-        content = response.choices[0].message.content.strip()
-        # Clean potential markdown wrapping
-        if content.startswith("```json"):
-            content = content[7:-3].strip()
-        elif content.startswith("```"):
-            content = content[3:-3].strip()
+    FALLBACK_MODELS = [
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "google/gemma-4-31b-it:free",
+        "openrouter/free"
+    ]
+
+    for model_id in FALLBACK_MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Title: {title}\nRaw Context: {raw_content}"}
+                ],
+                timeout=30,
+            )
+            content = response.choices[0].message.content.strip()
+            # Clean potential markdown wrapping
+            if content.startswith("```json"):
+                content = content[7:-3].strip()
+            elif content.startswith("```"):
+                content = content[3:-3].strip()
+                
+            return json.loads(content)
+        except Exception as e:
+            logger.warning(f"Model {model_id} failed for '{title}': {e}. Attempting next model...")
+            continue
             
-        return json.loads(content)
-    except Exception as e:
-        logger.error(f"AI Summarization failed for '{title}': {e}")
-        return None
+    logger.error(f"All AI models exhausted for '{title}'.")
+    return None
 
 def strip_html(html_str: str) -> str:
     """Lightweight HTML stripper using regex."""
