@@ -203,26 +203,23 @@ def create_article_page(pdf: CustomPDF, index: int, story: Dict) -> None:
     line_height = 5.5
     lines = pdf.multi_cell(w=col_w, h=line_height, text=body_text, dry_run=True, output="LINES")
     
-    curr_x = col_0_x
-    curr_y = col_y_start + image_height + 5
-    col_idx = 0
+    left_col_lines = int((bottom_limit - (col_y_start + image_height + 5)) / line_height)
+    right_col_lines = int((bottom_limit - col_y_start) / line_height)
     
-    for line in lines:
-        if curr_y + line_height > bottom_limit:
-            if col_idx == 0:
-                col_idx = 1
-                curr_x = col_1_x
-                curr_y = col_y_start
-            else:
-                pdf.set_xy(curr_x, curr_y)
-                pdf.set_font("Merriweather", "", 9.5)
-                pdf.set_text_color(*COLOR_GRAY)
-                pdf.cell(w=col_w, h=line_height, text="... [Content truncated. Click below to read more]")
-                break
-                
-        pdf.set_xy(curr_x, curr_y)
-        pdf.cell(w=col_w, h=line_height, text=line)
-        curr_y += line_height
+    # Reconstruct text blocks to allow fpdf2 to natively justify them
+    left_text = " ".join([line.strip() for line in lines[:left_col_lines]])
+    right_text = " ".join([line.strip() for line in lines[left_col_lines : left_col_lines + right_col_lines]])
+    
+    # Render Left Column
+    pdf.set_xy(col_0_x, col_y_start + image_height + 5)
+    pdf.multi_cell(w=col_w, h=line_height, text=left_text, align="J")
+    
+    # Render Right Column
+    pdf.set_xy(col_1_x, col_y_start)
+    if len(lines) > left_col_lines + right_col_lines:
+        right_text += " ... [Click below to read more]"
+        
+    pdf.multi_cell(w=col_w, h=line_height, text=right_text, align="J")
         
     pdf.set_y(266)
     pdf.set_font("Montserrat", "B", 10)

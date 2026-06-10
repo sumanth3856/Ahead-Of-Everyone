@@ -16,7 +16,7 @@ def main() -> None:
     logger.info("Starting AoE Tech News execution pipeline.")
     
     # 1. Fetch data concurrently
-    stories = fetch_dynamic_news(5)
+    stories = fetch_dynamic_news(10)
     
     # 2. Generate PDF
     date_str = datetime.now().strftime("%d-%m-%Y")
