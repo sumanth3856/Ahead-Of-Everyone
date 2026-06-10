@@ -36,16 +36,16 @@ You MUST output ONLY valid JSON. Do not include markdown formatting like ```json
 JSON Schema:
 {
   "category": "A 3-part tag (e.g., '01 . FEATURE . AI INNOVATION' or '05 . NEWS . POLICY')",
-  "headline": "A massive, punchy headline (e.g., 'China just made the world's biggest AI free.')",
-  "headline_highlight": "The most important word or short phrase from the headline to highlight in neon green.",
-  "quick_take": "A concise 2-3 sentence summary of the news.",
-  "bullets": [
+  "headline": "A massive, punchy headline",
+  "headline_highlight": "The most important word or short phrase from the headline to highlight.",
+  "the_brief": "A concise 2-3 sentence summary of the news.",
+  "core_breakdown": [
     {"topic": "The architecture", "text": "1.6T total params..."},
     {"topic": "The pricing", "text": "Flash at $0.14 per million..."}
   ],
-  "wild_part": "A punchy, single-sentence conclusion or hot take."
+  "the_edge": "A punchy, single-sentence conclusion or hot take."
 }
-Limit bullets to exactly 3 or 4 points."""
+Limit core_breakdown to exactly 3 or 4 points."""
 
     try:
         response = client.chat.completions.create(

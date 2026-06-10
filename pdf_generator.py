@@ -6,7 +6,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Premium Colors
-NEON_GREEN = (163, 230, 53)
+BRAND_ACCENT = (113, 27, 209) # Purple #711bd1
 BLACK = (10, 10, 10)
 WHITE = (255, 255, 255)
 LIGHT_GREY = (245, 245, 245)
@@ -30,20 +30,26 @@ class CustomPDF(FPDF):
             logger.error(f"Error loading fonts: {e}")
 
     def header(self):
-        # The cover page header is completely custom, so skip auto-header for page 1
+        # The cover page header and conclusion page are completely custom, so skip auto-header
         if self.page_no() == 1:
             return
             
         self.set_y(15)
-        # Logo on left
-        self.set_font("Montserrat", "B", 10)
-        self.set_text_color(*BLACK)
-        self.cell(50, 5, "^ staying ahead", ln=0, align="L")
+        # Highlighted Logo on left
+        self.set_font("Montserrat", "B", 9)
+        w = self.get_string_width("AHEAD OF EVERYONE")
+        self.set_fill_color(*BRAND_ACCENT)
+        self.rect(20, 13, w + 4, 6, 'F')
+        self.set_xy(22, 14)
+        self.set_text_color(*WHITE)
+        self.cell(w, 4, "AHEAD OF EVERYONE", ln=0, align="L")
         
         # Issue and date on right
         self.set_font("Montserrat", "B", 8)
-        header_text = f"ISSUE {self.issue_num} . {self.date_str.upper()}"
-        self.cell(0, 5, header_text, ln=1, align="R")
+        self.set_text_color(*BLACK)
+        header_text = f"EDITION {self.issue_num} . {self.date_str.upper()}"
+        self.set_y(14)
+        self.cell(0, 4, header_text, ln=1, align="R")
         self.ln(10)
 
     def footer(self):
@@ -53,7 +59,7 @@ class CustomPDF(FPDF):
         self.set_y(-20)
         self.set_font("Montserrat", "", 8)
         self.set_text_color(150, 150, 150)
-        footer_text = f"StayingAhead Daily . {self.date_str}"
+        footer_text = f"Ahead of Everyone . {self.date_str}"
         self.cell(100, 10, footer_text, ln=0, align="L")
         
         self.set_font("Montserrat", "B", 10)
@@ -65,7 +71,7 @@ def draw_neon_highlight(pdf, text, font_size, x, y):
     pdf.set_font("Montserrat", "B", font_size)
     width = pdf.get_string_width(text) + 4
     height = font_size * 0.4
-    pdf.set_fill_color(*NEON_GREEN)
+    pdf.set_fill_color(*BRAND_ACCENT)
     pdf.rect(x - 2, y - height + 2, width, height + 4, 'F')
     
 def draw_cover_page(pdf: CustomPDF, top_story: dict):
@@ -76,16 +82,20 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
     # Header
     pdf.set_y(20)
     pdf.set_x(20)
+    pdf.set_font("Montserrat", "B", 10)
+    w = pdf.get_string_width("AHEAD OF EVERYONE")
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.rect(20, 18, w + 6, 8, 'F')
+    pdf.set_xy(23, 20)
     pdf.set_text_color(*WHITE)
-    pdf.set_font("Montserrat", "B", 12)
-    pdf.cell(50, 5, "^ staying ahead", ln=0)
+    pdf.cell(w, 5, "AHEAD OF EVERYONE", ln=0)
     
     pdf.set_font("Montserrat", "B", 9)
     pdf.set_text_color(*WHITE)
-    pdf.cell(0, 5, f"ISSUE {pdf.issue_num}", ln=1, align="R")
+    pdf.cell(0, 5, f"EDITION {pdf.issue_num}", ln=1, align="R")
     
     pdf.set_font("Montserrat", "B", 9)
-    pdf.set_text_color(*NEON_GREEN)
+    pdf.set_text_color(*BRAND_ACCENT)
     pdf.set_x(20)
     pdf.cell(0, 5, pdf.date_str.upper(), ln=1, align="R")
     
@@ -95,13 +105,13 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
     # Headline Section
     pdf.set_y(80)
     pdf.set_x(20)
-    pdf.set_fill_color(*NEON_GREEN)
+    pdf.set_fill_color(*BRAND_ACCENT)
     pdf.rect(20, 82, 10, 1, 'F')
     
     pdf.set_x(35)
     pdf.set_font("Montserrat", "B", 8)
-    pdf.set_text_color(*NEON_GREEN)
-    pdf.cell(0, 5, "TODAY'S HEADLINE", ln=1)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.cell(0, 5, "FEATURED STORY", ln=1)
     
     pdf.set_y(95)
     pdf.set_x(20)
@@ -130,7 +140,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
         hy = pdf.get_y()
         draw_neon_highlight(pdf, highlight, 36, hx, hy + 11)
         
-        pdf.set_text_color(*BLACK)
+        pdf.set_text_color(*WHITE) # Because purple on black is hard to read
         pdf.cell(pdf.get_string_width(highlight), 15, highlight, ln=0)
         
         pdf.set_text_color(*WHITE)
@@ -145,11 +155,11 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
     pdf.set_x(20)
     pdf.set_font("Montserrat", "", 12)
     pdf.set_text_color(200, 200, 200)
-    pdf.multi_cell(160, 6, top_story.get("quick_take", ""))
+    pdf.multi_cell(160, 6, top_story.get("the_brief", ""))
     
     pdf.set_y(pdf.get_y() + 5)
     pdf.set_x(20)
-    pdf.multi_cell(160, 6, "It has been a long 24 hours. Here is the rundown, in 7 minutes.")
+    pdf.multi_cell(160, 6, "It has been a long 24 hours. Here is the rundown.")
     
     # Footer
     pdf.set_y(-35)
@@ -160,33 +170,33 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
     pdf.set_x(20)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*WHITE)
-    pdf.cell(pdf.get_string_width("Five minutes. Then you are "), 5, "Five minutes. Then you are ", ln=0)
-    pdf.set_text_color(*NEON_GREEN)
-    pdf.cell(20, 5, "ahead.", ln=0)
+    pdf.cell(pdf.get_string_width("Empowering your daily "), 5, "Empowering your daily ", ln=0)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.cell(20, 5, "edge.", ln=0)
     
     pdf.set_font("Montserrat", "B", 7)
     pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 4, "SENT BY", ln=1, align="R")
+    pdf.cell(0, 4, "CURATED BY", ln=1, align="R")
     
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*WHITE)
-    pdf.cell(0, 5, "AoE Automated System", ln=1, align="R")
+    pdf.cell(0, 5, "Sumanth", ln=1, align="R")
 
 def draw_toc_page(pdf: CustomPDF, stories: list):
     pdf.add_page()
     pdf.set_y(30)
     
-    pdf.set_fill_color(*NEON_GREEN)
-    pdf.rect(20, 30, 40, 7, 'F')
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.rect(20, 30, 35, 7, 'F')
     pdf.set_xy(20, 31)
     pdf.set_font("Montserrat", "B", 8)
-    pdf.set_text_color(*BLACK)
-    pdf.cell(40, 5, "MORNING DIGEST", align="C", ln=1)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(35, 5, "DAILY PULSE", align="C", ln=1)
     
     pdf.set_y(45)
     pdf.set_font("Montserrat", "B", 32)
     pdf.set_text_color(*BLACK)
-    pdf.cell(0, 10, "What we cover today.", ln=1)
+    pdf.cell(0, 10, "Today's Agenda.", ln=1)
     
     pdf.set_y(60)
     pdf.set_font("Montserrat", "", 11)
@@ -221,7 +231,7 @@ def draw_toc_page(pdf: CustomPDF, stories: list):
         pdf.set_font("Montserrat", "", 9)
         pdf.set_text_color(100, 100, 100)
         
-        desc = story.get("quick_take", "")
+        desc = story.get("the_brief", "")
         if len(desc) > 80: desc = desc[:80] + "..."
         pdf.multi_cell(145, 5, desc)
         
@@ -231,7 +241,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.add_page()
     
     pdf.set_y(30)
-    pdf.set_fill_color(*NEON_GREEN)
+    pdf.set_fill_color(*BRAND_ACCENT)
     pdf.rect(20, 30, 2, 6, 'F')
     
     pdf.set_xy(25, 30)
@@ -266,8 +276,10 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         hy = pdf.get_y()
         draw_neon_highlight(pdf, highlight, 28, hx, hy + 9)
         
+        pdf.set_text_color(*WHITE)
         pdf.cell(pdf.get_string_width(highlight), 12, highlight, ln=0)
         
+        pdf.set_text_color(*BLACK)
         if len(parts) > 1:
             pdf.cell(pdf.get_string_width(parts[1]), 12, parts[1], ln=1)
         else:
@@ -282,29 +294,29 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.rect(20, start_y, 170, 40, 'F')
     
     pdf.set_fill_color(*BLACK)
-    pdf.rect(25, start_y - 3, 25, 6, 'F')
+    pdf.rect(25, start_y - 3, 22, 6, 'F')
     pdf.set_xy(25, start_y - 2)
     pdf.set_font("Montserrat", "B", 7)
-    pdf.set_text_color(*NEON_GREEN)
-    pdf.cell(25, 4, "QUICK TAKE", align="C", ln=1)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.cell(22, 4, "THE BRIEF", align="C", ln=1)
     
     pdf.set_xy(25, start_y + 8)
     pdf.set_font("Montserrat", "", 10)
     pdf.set_text_color(30, 30, 30)
-    pdf.multi_cell(160, 6, story.get("quick_take", ""))
+    pdf.multi_cell(160, 6, story.get("the_brief", ""))
     
     pdf.set_y(max(pdf.get_y(), start_y + 40) + 10)
     
-    pdf.set_fill_color(*NEON_GREEN)
+    pdf.set_fill_color(*BRAND_ACCENT)
     pdf.rect(20, pdf.get_y() + 1, 4, 4, 'F')
     pdf.set_x(28)
     pdf.set_font("Montserrat", "B", 8)
     pdf.set_text_color(*BLACK)
-    pdf.cell(0, 6, "WHAT YOU NEED TO KNOW", ln=1)
+    pdf.cell(0, 6, "CORE BREAKDOWN", ln=1)
     
     pdf.set_y(pdf.get_y() + 5)
     
-    bullets = story.get("bullets", [])
+    bullets = story.get("core_breakdown", [])
     for bullet in bullets:
         if pdf.get_y() > 220:
             pdf.add_page()
@@ -334,14 +346,48 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     pdf.set_xy(25, wy + 5)
     pdf.set_font("Montserrat", "B", 8)
-    pdf.set_text_color(*NEON_GREEN)
-    pdf.cell(0, 6, "THE WILD PART", ln=1)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.cell(0, 6, "THE EDGE", ln=1)
     
     pdf.set_xy(25, wy + 12)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*WHITE)
-    pdf.multi_cell(160, 6, story.get("wild_part", ""))
+    pdf.multi_cell(160, 6, story.get("the_edge", ""))
+
+def draw_conclusion_page(pdf: CustomPDF):
+    # This disables header/footer automatically because page_no checks might not work
+    # We will just suppress header/footer in the logic or draw over it
+    pdf.add_page()
+    pdf.set_fill_color(*BLACK)
+    pdf.rect(0, 0, 210, 297, 'F')
     
+    pdf.set_y(100)
+    pdf.set_font("Montserrat", "B", 36)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 15, "You are now caught up.", align="C", ln=1)
+    
+    pdf.set_y(120)
+    pdf.set_font("Montserrat", "", 14)
+    pdf.set_text_color(180, 180, 180)
+    pdf.cell(0, 10, "See you tomorrow.", align="C", ln=1)
+    
+    pdf.set_y(160)
+    pdf.set_font("Montserrat", "B", 18)
+    w = pdf.get_string_width("AHEAD OF EVERYONE")
+    center_x = (210 - w) / 2
+    
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.rect(center_x - 4, 158, w + 8, 12, 'F')
+    
+    pdf.set_xy(center_x, 160)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(w, 8, "AHEAD OF EVERYONE", align="C", ln=1)
+    
+    pdf.set_y(260)
+    pdf.set_font("Montserrat", "B", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 10, "Curated by Sumanth", align="C", ln=1)
+
 def generate_digest_pdf(stories: list) -> str:
     date_str = datetime.now().strftime("%d %B %Y")
     issue_num = "003"
@@ -356,6 +402,8 @@ def generate_digest_pdf(stories: list) -> str:
     
     for idx, story in enumerate(stories):
         draw_article_page(pdf, idx + 1, story)
+        
+    draw_conclusion_page(pdf)
         
     file_name = f"AoE Tech News({datetime.now().strftime('%d-%m-%Y')}).pdf"
     pdf.output(file_name)
