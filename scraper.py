@@ -1,14 +1,33 @@
 import os
 import requests
-import urllib.parse
 import tempfile
 import logging
+import feedparser
 from bs4 import BeautifulSoup
 from PIL import Image
 from typing import List, Dict, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+import time
+from openai import OpenAI
+from dotenv import load_dotenv
+
+import config
 
 logger = logging.getLogger(__name__)
+load_dotenv()
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+def init_openai_client():
+    if not OPENROUTER_API_KEY:
+        logger.warning("OPENROUTER_API_KEY is not set. AI Summarization will fail.")
+    return OpenAI(
+        base_url=config.OPENROUTER_API_URL,
+        api_key=OPENROUTER_API_KEY,
+    )
+
+client = init_openai_client()
 
 def download_image(url: str) -> Optional[str]:
     """Downloads image file safely to a temporary file path."""
@@ -72,81 +91,130 @@ def process_and_convert_image(raw_img_path: Optional[str]) -> str:
         logger.error(f"Error processing image {raw_img_path}: {e}")
         return default_img
 
-def elaborate_content_and_image(url: str, title: str) -> Tuple[str, Optional[str]]:
-    """Fetches article page, extracts paragraph texts and official hero image."""
-    content = ""
-    image_url = None
+def ai_summarize(title: str, raw_content: str) -> str:
+    """Uses OpenRouter AI to write a highly professional 200-word summary."""
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        r = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        
-        meta_og = soup.find('meta', attrs={'property': 'og:image'}) or soup.find('meta', attrs={'name': 'og:image'})
-        if meta_og and meta_og.get('content'):
-            image_url = urllib.parse.urljoin(url, meta_og.get('content'))
-        else:
-            meta_tw = soup.find('meta', attrs={'name': 'twitter:image'}) or soup.find('meta', attrs={'property': 'twitter:image'})
-            if meta_tw and meta_tw.get('content'):
-                image_url = urllib.parse.urljoin(url, meta_tw.get('content'))
-            else:
-                for img in soup.find_all('img'):
-                    src = img.get('src')
-                    if src and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png']):
-                        if not any(icon in src.lower() for icon in ['icon', 'logo', 'avatar', 'sprite']):
-                            image_url = urllib.parse.urljoin(url, src)
-                            break
-                            
-        paragraphs = soup.find_all('p')
-        text = ' '.join([p.get_text().strip() for p in paragraphs if len(p.get_text().strip()) > 50])
-        
-        if len(text) < 200:
-            content = f"This report covers breaking updates regarding '{title}'. While detailed public documentation is currently minimal or restricted, industry experts are closely monitoring the situation as it develops. The implications of this update may significantly impact upcoming sector trends and strategies. Please follow the source link below to stay informed on the original publication."
-        else:
-            content = text
-            
+        response = client.chat.completions.create(
+            model=config.OPENROUTER_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an elite, highly professional tech journalist for 'Ahead of Everyone'. Your task is to write a cohesive, engaging, and premium 200-word editorial news report based on the provided title and raw context. Avoid filler words. Be concise and authoritative."
+                },
+                {
+                    "role": "user",
+                    "content": f"Title: {title}\nRaw Context/Snippet: {raw_content}"
+                }
+            ],
+            timeout=30,
+        )
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"Error elaborating {url}: {e}")
-        content = f"Recent developments surrounding '{title}' have just surfaced. Current public insights are actively evolving, and professionals are analyzing the potential disruptions this may cause in the broader technological landscape. We will continue to monitor the metrics. You can visit the direct source below for raw updates."
-        
-    return content, image_url
+        logger.error(f"AI Summarization failed for '{title}': {e}")
+        return f"Recent developments regarding '{title}' are being actively monitored. While detailed public documentation is evolving, industry experts are analyzing the potential disruptions this may cause. Please refer to the source link below to stay informed on the original publication."
 
-def fetch_story_details(args: Tuple[str, str]) -> Dict:
-    story_url, title = args
-    logger.info(f"Elaborating: {title}")
-    content, image_url = elaborate_content_and_image(story_url, title)
+def extract_image_from_html(html_content: str) -> Optional[str]:
+    try:
+        soup = BeautifulSoup(html_content, 'html.parser')
+        for img in soup.find_all('img'):
+            src = img.get('src')
+            if src and any(ext in src.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                if not any(icon in src.lower() for icon in ['icon', 'logo', 'avatar', 'sprite']):
+                    return src
+    except Exception:
+        pass
+    return None
+
+def fetch_rss_feed(feed_url: str) -> List[Dict]:
+    logger.info(f"Fetching RSS feed: {feed_url}")
+    items = []
+    try:
+        parsed = feedparser.parse(feed_url)
+        cutoff_time = datetime.now() - timedelta(hours=24)
+        for entry in parsed.entries:
+            # Check date
+            published = None
+            if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                published = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+            elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+                published = datetime.fromtimestamp(time.mktime(entry.updated_parsed))
+                
+            if published and published < cutoff_time:
+                continue
+
+            title = entry.get('title', 'Unknown Title')
+            link = entry.get('link', '')
+            
+            # Extract content and image
+            raw_summary = entry.get('summary', '')
+            content = entry.get('content', [{'value': ''}])[0]['value'] if hasattr(entry, 'content') else ''
+            full_html = raw_summary + " " + content
+            
+            image_url = extract_image_from_html(full_html)
+            if not image_url and hasattr(entry, 'media_content'):
+                for media in entry.media_content:
+                    if 'url' in media and 'image' in media.get('type', ''):
+                        image_url = media['url']
+                        break
+                        
+            # Clean text for AI context
+            soup = BeautifulSoup(full_html, 'html.parser')
+            text_snippet = soup.get_text(separator=' ', strip=True)[:1000]
+            
+            items.append({
+                "title": title,
+                "url": link,
+                "raw_text": text_snippet,
+                "image_url": image_url
+            })
+    except Exception as e:
+        logger.error(f"Error fetching RSS {feed_url}: {e}")
+    return items
+
+def fetch_story_details(item: Dict) -> Dict:
+    logger.info(f"AI Processing: {item['title']}")
+    final_content = ai_summarize(item['title'], item['raw_text'])
+    
     return {
-        "title": title,
-        "url": story_url,
-        "content": content,
-        "image_url": image_url
+        "title": item['title'],
+        "url": item['url'],
+        "content": final_content,
+        "image_url": item['image_url']
     }
 
-def fetch_dynamic_news(limit: int = 5) -> List[Dict]:
-    """Scrapes top stories concurrently."""
-    logger.info("Fetching top stories directly from HackerNews HTML...")
-    stories = []
-    try:
-        url = "https://news.ycombinator.com/"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        storylinks = soup.find_all('span', class_='titleline')
-        tasks = []
-        for item in storylinks[:limit]:
-            link_tag = item.find('a')
-            if link_tag:
-                title = link_tag.get_text()
-                story_url = link_tag.get('href')
-                if story_url.startswith('item?id='):
-                    story_url = f"https://news.ycombinator.com/{story_url}"
-                tasks.append((story_url, title))
-        
-        # Concurrency Optimization
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            results = executor.map(fetch_story_details, tasks)
-            stories = list(results)
+def fetch_dynamic_news(limit: int = 20) -> List[Dict]:
+    """Scrapes multi-source RSS feeds and uses AI to summarize."""
+    logger.info("Fetching multi-source RSS feeds...")
+    rss_feeds = [
+        "https://techcrunch.com/feed/",
+        "https://www.theverge.com/rss/index.xml",
+        "https://www.wired.com/feed/rss",
+        "https://news.ycombinator.com/rss"
+    ]
+    
+    all_raw_items = []
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = executor.map(fetch_rss_feed, rss_feeds)
+        for res in results:
+            all_raw_items.extend(res)
             
-    except Exception as e:
-        logger.error(f"Error fetching news: {e}")
+    logger.info(f"Total raw items fetched from last 24h: {len(all_raw_items)}")
+    
+    # Deduplicate by title
+    seen = set()
+    unique_items = []
+    for item in all_raw_items:
+        if item['title'] not in seen:
+            seen.add(item['title'])
+            unique_items.append(item)
+            
+    # Optional capping to avoid massive PDFs
+    unique_items = unique_items[:limit]
+    
+    stories = []
+    # Process concurrently through AI
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = executor.map(fetch_story_details, unique_items)
+        stories = list(results)
+            
     return stories

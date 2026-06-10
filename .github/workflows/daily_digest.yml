@@ -30,9 +30,10 @@ jobs:
 
     - name: Execute Daily Digest Script
       env:
-        # Securely inject Telegram credentials from GitHub repository secrets
+        # Securely inject credentials from GitHub repository secrets
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       run: |
         python main.py
 

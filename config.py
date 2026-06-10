@@ -24,6 +24,10 @@ BRAND_NAME = "Ahead of Everyone"
 TAGLINE = "Innovating the Future, Today."
 COPYRIGHT = "© 2026 Ahead of Everyone. All Rights Reserved."
 
+# OpenRouter / AI Settings
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL = "google/gemini-2.0-flash-lite-preview-02-05:free"
+
 # Color Palette (Luxury Slate & Neon Green)
 COLOR_DARK = (10, 15, 29)        
 COLOR_GRAY = (74, 85, 104)       

@@ -16,7 +16,8 @@ def main() -> None:
     logger.info("Starting AoE Tech News execution pipeline.")
     
     # 1. Fetch data concurrently
-    stories = fetch_dynamic_news(10)
+    # We let the scraper decide the limit (default 20) so we don't crash the free API
+    stories = fetch_dynamic_news(25)
     
     # 2. Generate PDF
     date_str = datetime.now().strftime("%d-%m-%Y")
