@@ -22,13 +22,6 @@ def main() -> None:
     date_str = datetime.now().strftime("%d-%m-%Y")
     pdf_filename = f"AoE Tech News({date_str}).pdf"
     generate_pdf(stories, pdf_filename)
-    
-    # Backward compatibility
-    try:
-        shutil.copyfile(pdf_filename, "Daily_Tech_Digest.pdf")
-        logger.info("Copied output to Daily_Tech_Digest.pdf for backwards compatibility")
-    except Exception as e:
-        logger.error(f"Error copying file: {e}")
         
     # 3. Deliver payload
     load_dotenv()
