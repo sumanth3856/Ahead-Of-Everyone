@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 # Initialize config/logging
 import config
 from scraper import fetch_dynamic_news
-from pdf_generator import generate_pdf
+from pdf_generator import generate_digest_pdf
 from telegram_client import send_pdf_to_telegram
 
 logger = logging.getLogger(__name__)
@@ -20,9 +20,10 @@ def main() -> None:
     stories = fetch_dynamic_news(25)
     
     # 2. Generate PDF
-    date_str = datetime.now().strftime("%d-%m-%Y")
-    pdf_filename = f"AoE Tech News({date_str}).pdf"
-    generate_pdf(stories, pdf_filename)
+    pdf_filename = generate_digest_pdf(stories)
+    if not pdf_filename:
+        logger.error("No stories scraped or generated.")
+        return
         
     # 3. Deliver payload
     load_dotenv()
