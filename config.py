@@ -26,7 +26,7 @@ COPYRIGHT = "© 2026 Ahead of Everyone. All Rights Reserved."
 
 # OpenRouter / AI Settings
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "meta-llama/llama-3-8b-instruct:free"
+OPENROUTER_MODEL = "google/gemma-4-31b-it:free"
 
 # Color Palette (Luxury Slate & Neon Green)
 COLOR_DARK = (10, 15, 29)        
