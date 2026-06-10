@@ -116,7 +116,18 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
     structured_data = ai_summarize(item['title'], item['raw_text'])
     
     if not structured_data:
-        return None
+        logger.warning(f"Using fallback summary for '{item['title']}' due to AI failure.")
+        structured_data = {
+            "category": "TECH . NEWS",
+            "headline": item['title'],
+            "headline_highlight": item['title'].split()[0] if item['title'] else "NEWS",
+            "the_brief": item['raw_text'][:200] + "...",
+            "core_breakdown": [
+                {"topic": "Overview", "description": "The AI summarizer hit a rate limit, so this is the raw text snippet."},
+                {"topic": "Source Text", "description": item['raw_text'][:150] + "..."}
+            ],
+            "the_edge": "Read the full article online to stay ahead."
+        }
         
     structured_data['url'] = item['url']
     return structured_data
