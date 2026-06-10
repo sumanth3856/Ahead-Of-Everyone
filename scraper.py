@@ -148,10 +148,10 @@ def fetch_dynamic_news(limit: int = 15) -> List[Dict]:
     unique_items = unique_items[:limit]
     
     stories = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        results = executor.map(fetch_story_details, unique_items)
-        for res in results:
-            if res:
-                stories.append(res)
+    for item in unique_items:
+        res = fetch_story_details(item)
+        if res:
+            stories.append(res)
+        time.sleep(2) # Prevent hitting free-tier rate limits
                 
     return stories
