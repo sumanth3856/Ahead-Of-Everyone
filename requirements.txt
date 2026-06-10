@@ -1,7 +1,5 @@
 requests
 fpdf2
 python-dotenv
-beautifulsoup4
-Pillow
 feedparser
 openai

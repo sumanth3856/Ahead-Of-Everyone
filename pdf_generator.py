@@ -1,258 +1,362 @@
 import os
 import logging
-import requests
-from datetime import datetime
-from typing import List, Dict
 from fpdf import FPDF
-from fpdf.enums import XPos, YPos
-
-from config import (
-    BRAND_NAME, TAGLINE, COPYRIGHT, COLOR_DARK, COLOR_GRAY, COLOR_LIGHT_GRAY,
-    COLOR_NEON, COLOR_WHITE, LOGO_PATH, FONTS_DIR
-)
-from scraper import download_image, process_and_convert_image
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-def download_fonts() -> None:
-    """Downloads premium editorial fonts from GitHub source repositories."""
-    os.makedirs(FONTS_DIR, exist_ok=True)
-    fonts = {
-        "Montserrat-Bold.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Bold.ttf",
-        "Montserrat-Regular.ttf": "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Regular.ttf",
-        "Merriweather-Regular.ttf": "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Regular.ttf",
-        "Merriweather-Italic.ttf": "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Italic.ttf",
-        "Merriweather-Bold.ttf": "https://github.com/SorkinType/Merriweather/raw/master/fonts/ttf/Merriweather-Bold.ttf",
-    }
-    for filename, url in fonts.items():
-        filepath = os.path.join(FONTS_DIR, filename)
-        if not os.path.exists(filepath):
-            logger.info(f"Downloading font: {filename}...")
-            try:
-                headers = {'User-Agent': 'Mozilla/5.0'}
-                r = requests.get(url, headers=headers, timeout=15)
-                r.raise_for_status()
-                with open(filepath, 'wb') as f:
-                    f.write(r.content)
-                logger.info(f"Successfully downloaded {filename}")
-            except Exception as e:
-                logger.error(f"Error downloading font {filename}: {e}")
+# Premium Colors
+NEON_GREEN = (163, 230, 53)
+BLACK = (10, 10, 10)
+WHITE = (255, 255, 255)
+LIGHT_GREY = (245, 245, 245)
+DARK_GREY = (30, 30, 30)
 
 class CustomPDF(FPDF):
+    def __init__(self, date_str: str, issue_num: str):
+        super().__init__(orientation="P", unit="mm", format="A4")
+        self.date_str = date_str
+        self.issue_num = issue_num
+        self.set_auto_page_break(auto=True, margin=15)
+        
+        # Make sure assets exist
+        if not os.path.exists("assets"):
+            os.makedirs("assets")
+            
+        try:
+            self.add_font("Montserrat", "", "assets/Montserrat-Regular.ttf")
+            self.add_font("Montserrat", "B", "assets/Montserrat-Bold.ttf")
+        except Exception as e:
+            logger.error(f"Error loading fonts: {e}")
+
     def header(self):
-        if self.page_no() > 2:
-            self.set_fill_color(*COLOR_DARK)
-            self.rect(0, 0, 210, 25, 'F')
-            try:
-                if os.path.exists(LOGO_PATH):
-                    self.image(LOGO_PATH, x=20, y=5, w=15)
-            except Exception:
-                pass
-            self.set_y(8)
-            self.set_x(40)
-            self.set_font("Montserrat", "B", 14)
-            self.set_text_color(*COLOR_NEON)
-            self.cell(w=0, h=10, text=BRAND_NAME.upper(), align="L")
-            self.set_x(140)
-            self.set_font("Montserrat", "", 10)
-            self.set_text_color(*COLOR_WHITE)
-            date_str = datetime.now().strftime("%B %d, %Y")
-            self.cell(w=50, h=10, text=date_str, align="R")
-            self.set_draw_color(*COLOR_NEON)
-            self.set_line_width(0.5)
-            self.line(20, 25, 190, 25)
-            self.set_line_width(0.2)
+        # The cover page header is completely custom, so skip auto-header for page 1
+        if self.page_no() == 1:
+            return
+            
+        self.set_y(15)
+        # Logo on left
+        self.set_font("Montserrat", "B", 10)
+        self.set_text_color(*BLACK)
+        self.cell(50, 5, "^ staying ahead", ln=0, align="L")
+        
+        # Issue and date on right
+        self.set_font("Montserrat", "B", 8)
+        header_text = f"ISSUE {self.issue_num} . {self.date_str.upper()}"
+        self.cell(0, 5, header_text, ln=1, align="R")
+        self.ln(10)
 
     def footer(self):
-        if self.page_no() > 2:
-            self.set_y(-20)
-            self.set_draw_color(*COLOR_NEON)
-            self.set_line_width(0.5)
-            self.line(20, self.get_y(), 190, self.get_y())
-            self.set_line_width(0.2)
-            self.set_y(-15)
-            self.set_font("Montserrat", "", 9)
-            self.set_text_color(*COLOR_GRAY)
-            self.set_x(20)
-            self.cell(w=80, h=10, text=BRAND_NAME, align="L")
-            self.set_x(110)
-            self.cell(w=80, h=10, text=f"Page {self.page_no()}", align="R")
+        if self.page_no() == 1:
+            return
+            
+        self.set_y(-20)
+        self.set_font("Montserrat", "", 8)
+        self.set_text_color(150, 150, 150)
+        footer_text = f"StayingAhead Daily . {self.date_str}"
+        self.cell(100, 10, footer_text, ln=0, align="L")
+        
+        self.set_font("Montserrat", "B", 10)
+        self.set_text_color(*BLACK)
+        page_num = str(self.page_no() - 1).zfill(2)
+        self.cell(0, 10, page_num, ln=0, align="R")
 
-def create_cover_page(pdf: CustomPDF) -> None:
+def draw_neon_highlight(pdf, text, font_size, x, y):
+    pdf.set_font("Montserrat", "B", font_size)
+    width = pdf.get_string_width(text) + 4
+    height = font_size * 0.4
+    pdf.set_fill_color(*NEON_GREEN)
+    pdf.rect(x - 2, y - height + 2, width, height + 4, 'F')
+    
+def draw_cover_page(pdf: CustomPDF, top_story: dict):
     pdf.add_page()
-    pdf.set_fill_color(*COLOR_DARK)
+    pdf.set_fill_color(*BLACK)
     pdf.rect(0, 0, 210, 297, 'F')
-    pdf.set_draw_color(*COLOR_NEON)
-    pdf.set_line_width(1.5)
-    pdf.rect(10, 10, 190, 277, 'D')
-    pdf.set_line_width(0.2)
-    try:
-        if os.path.exists(LOGO_PATH):
-            pdf.image(LOGO_PATH, x=85, y=55, w=40)
-    except Exception:
-        pass
-    pdf.set_y(115)
-    pdf.set_font("Montserrat", "B", 32)
-    pdf.set_text_color(*COLOR_WHITE)
-    pdf.cell(w=0, h=15, text=BRAND_NAME.upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-    pdf.set_y(135)
-    pdf.set_font("Montserrat", "", 14)
-    pdf.set_text_color(*COLOR_NEON)
-    pdf.cell(w=0, h=10, text=TAGLINE, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-    pdf.set_draw_color(50, 60, 80)
-    pdf.line(40, 155, 170, 155)
-    pdf.set_y(170)
-    pdf.set_font("Merriweather", "", 18)
-    pdf.set_text_color(200, 210, 225)
-    date_str = datetime.now().strftime("%B %d, %Y")
-    pdf.cell(w=0, h=10, text=f"Daily Tech Digest  |  {date_str}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-    pdf.set_y(210)
-    pdf.set_font("Montserrat", "", 10)
-    pdf.set_text_color(*COLOR_GRAY)
-    pdf.cell(w=0, h=8, text="CURATED INSIGHTS FOR THE MODERN TECH LEADER", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-    pdf.set_y(265)
-    pdf.set_text_color(*COLOR_GRAY)
-    pdf.cell(w=0, h=10, text=COPYRIGHT, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
-
-def create_toc_page(pdf: CustomPDF, stories: List[Dict]) -> None:
-    pdf.add_page()
-    pdf.set_fill_color(*COLOR_LIGHT_GRAY)
-    pdf.rect(10, 10, 190, 277, 'F')
-    pdf.set_draw_color(*COLOR_NEON)
-    pdf.set_line_width(1.0)
-    pdf.rect(10, 10, 190, 277, 'D')
-    pdf.set_line_width(0.2)
-    pdf.set_y(35)
-    pdf.set_font("Montserrat", "B", 24)
-    pdf.set_text_color(*COLOR_DARK)
-    pdf.cell(w=0, h=15, text="TABLE OF CONTENTS", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
-    pdf.set_draw_color(*COLOR_NEON)
-    pdf.set_line_width(1.5)
-    pdf.line(20, pdf.get_y(), 80, pdf.get_y())
-    pdf.set_line_width(0.2)
-    pdf.ln(20)
     
-    for i, story in enumerate(stories, 1):
-        pdf.set_font("Montserrat", "B", 13)
-        pdf.set_text_color(*COLOR_DARK)
-        pdf.cell(w=10, h=10, text=f"0{i}.", align="L")
-        pdf.set_font("Montserrat", "", 13)
-        title = story['title'].encode('ascii', 'ignore').decode('ascii')
-        max_title_len = 55
-        if len(title) > max_title_len:
-            title = title[:max_title_len - 3] + "..."
-        pdf.cell(w=125, h=10, text=title, align="L")
-        curr_x = pdf.get_x()
-        pdf.set_text_color(*COLOR_GRAY)
-        pdf.set_font("Helvetica", "", 12)
-        dots_width = 175 - curr_x
-        dots_count = int(dots_width / pdf.get_string_width("."))
-        pdf.cell(w=dots_width, h=10, text="." * dots_count, align="R")
-        pdf.set_font("Montserrat", "B", 13)
-        pdf.set_text_color(*COLOR_NEON)
-        pdf.cell(w=15, h=10, text=f"Pg {i+2}", new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
-        pdf.ln(5)
-
-def create_article_page(pdf: CustomPDF, index: int, story: Dict) -> None:
-    pdf.add_page()
-    epw = pdf.epw
-    pdf.set_y(35)
-    pdf.set_font("Merriweather", "B", 17)
-    pdf.set_text_color(*COLOR_DARK)
-    title_text = f"0{index}. {story['title']}"
-    pdf.multi_cell(w=epw, h=8, text=title_text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_draw_color(*COLOR_NEON)
-    pdf.set_line_width(0.8)
-    pdf.line(20, pdf.get_y() + 2, 60, pdf.get_y() + 2)
-    pdf.set_line_width(0.2)
-    pdf.ln(8)
+    # Header
+    pdf.set_y(20)
+    pdf.set_x(20)
+    pdf.set_text_color(*WHITE)
+    pdf.set_font("Montserrat", "B", 12)
+    pdf.cell(50, 5, "^ staying ahead", ln=0)
     
-    raw_img = None
-    extracted_img_url = story.get("image_url")
-    if extracted_img_url:
-        logger.info(f"Downloading image from {extracted_img_url} for story {index}...")
-        raw_img = download_image(extracted_img_url)
+    pdf.set_font("Montserrat", "B", 9)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 5, f"ISSUE {pdf.issue_num}", ln=1, align="R")
+    
+    pdf.set_font("Montserrat", "B", 9)
+    pdf.set_text_color(*NEON_GREEN)
+    pdf.set_x(20)
+    pdf.cell(0, 5, pdf.date_str.upper(), ln=1, align="R")
+    
+    pdf.set_draw_color(50, 50, 50)
+    pdf.line(20, 35, 190, 35)
+    
+    # Headline Section
+    pdf.set_y(80)
+    pdf.set_x(20)
+    pdf.set_fill_color(*NEON_GREEN)
+    pdf.rect(20, 82, 10, 1, 'F')
+    
+    pdf.set_x(35)
+    pdf.set_font("Montserrat", "B", 8)
+    pdf.set_text_color(*NEON_GREEN)
+    pdf.cell(0, 5, "TODAY'S HEADLINE", ln=1)
+    
+    pdf.set_y(95)
+    pdf.set_x(20)
+    pdf.set_font("Montserrat", "B", 36)
+    pdf.set_text_color(*WHITE)
+    
+    headline = top_story.get("headline", "Major Tech News Event")
+    highlight = top_story.get("headline_highlight", "")
+    
+    words = headline.split()
+    line = ""
+    for word in words:
+        if pdf.get_string_width(line + word) > 160:
+            pdf.set_x(20)
+            pdf.cell(0, 15, line, ln=1)
+            line = word + " "
+        else:
+            line += word + " "
+            
+    pdf.set_x(20)
+    if highlight and highlight in line:
+        parts = line.split(highlight)
+        pdf.cell(pdf.get_string_width(parts[0]), 15, parts[0], ln=0)
         
-    processed_img = process_and_convert_image(raw_img)
-    
-    col_y_start = pdf.get_y()
-    col_w = 80
-    col_0_x = 20
-    col_1_x = 110
-    bottom_limit = 262
-    
-    image_height = 60
-    try:
-        pdf.image(processed_img, x=col_0_x, y=col_y_start, w=col_w, h=image_height)
-        if processed_img != "default_hero.png" and os.path.exists(processed_img):
-            try:
-                os.remove(processed_img)
-            except Exception:
-                pass
-    except Exception as e:
-        logger.error(f"Error rendering image: {e}")
-        pdf.set_fill_color(240, 240, 240)
-        pdf.rect(col_0_x, col_y_start, col_w, image_height, 'F')
-        pdf.set_draw_color(*COLOR_GRAY)
-        pdf.rect(col_0_x, col_y_start, col_w, image_height, 'D')
+        hx = pdf.get_x()
+        hy = pdf.get_y()
+        draw_neon_highlight(pdf, highlight, 36, hx, hy + 11)
         
-    body_text = story['content'].encode('ascii', 'ignore').decode('ascii')
-    
-    pdf.set_font("Merriweather", "I", 10.5)
-    pdf.set_text_color(45, 55, 72)
-    line_height = 5.5
-    lines = pdf.multi_cell(w=col_w, h=line_height, text=body_text, dry_run=True, output="LINES")
-    
-    left_col_lines = int((bottom_limit - (col_y_start + image_height + 5)) / line_height)
-    right_col_lines = int((bottom_limit - col_y_start) / line_height)
-    
-    # Reconstruct text blocks to allow fpdf2 to natively justify them
-    left_text = " ".join([line.strip() for line in lines[:left_col_lines]])
-    right_text = " ".join([line.strip() for line in lines[left_col_lines : left_col_lines + right_col_lines]])
-    
-    # Render Left Column
-    pdf.set_xy(col_0_x, col_y_start + image_height + 5)
-    pdf.multi_cell(w=col_w, h=line_height, text=left_text, align="J")
-    
-    # Render Right Column
-    pdf.set_xy(col_1_x, col_y_start)
-    if len(lines) > left_col_lines + right_col_lines:
-        right_text += " ... [Click below to read more]"
+        pdf.set_text_color(*BLACK)
+        pdf.cell(pdf.get_string_width(highlight), 15, highlight, ln=0)
         
-    pdf.multi_cell(w=col_w, h=line_height, text=right_text, align="J")
-        
-    pdf.set_y(266)
-    pdf.set_font("Montserrat", "B", 10)
-    pdf.set_text_color(*COLOR_DARK)
-    pdf.cell(w=epw, h=6, text="READ FULL SOURCE ARTICLE ->", link=story['url'], align="R")
-
-def generate_pdf(stories: List[Dict], filename: str = "Daily_Tech_Digest.pdf") -> str:
-    logger.info("Generating beautifully formatted PDF...")
-    download_fonts()
-    pdf = CustomPDF()
-    
-    try:
-        pdf.add_font("Montserrat", style="", fname=os.path.join(FONTS_DIR, "Montserrat-Regular.ttf"))
-        pdf.add_font("Montserrat", style="B", fname=os.path.join(FONTS_DIR, "Montserrat-Bold.ttf"))
-        pdf.add_font("Merriweather", style="", fname=os.path.join(FONTS_DIR, "Merriweather-Regular.ttf"))
-        pdf.add_font("Merriweather", style="I", fname=os.path.join(FONTS_DIR, "Merriweather-Italic.ttf"))
-        pdf.add_font("Merriweather", style="B", fname=os.path.join(FONTS_DIR, "Merriweather-Bold.ttf"))
-    except Exception as e:
-        logger.error(f"Error registering fonts: {e}")
-        
-    pdf.set_margins(20, 20, 20)
-    pdf.set_auto_page_break(auto=False)
-    create_cover_page(pdf)
-    
-    if stories:
-        create_toc_page(pdf, stories)
-        for i, story in enumerate(stories, 1):
-            create_article_page(pdf, i, story)
+        pdf.set_text_color(*WHITE)
+        if len(parts) > 1:
+            pdf.cell(pdf.get_string_width(parts[1]), 15, parts[1], ln=1)
+        else:
+            pdf.ln(15)
     else:
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 16)
-        pdf.cell(w=0, h=10, text="No tech news fetched today.", align="C")
+        pdf.cell(0, 15, line, ln=1)
         
-    pdf.output(filename)
-    logger.info(f"Successfully generated {filename}")
-    return filename
+    pdf.set_y(pdf.get_y() + 15)
+    pdf.set_x(20)
+    pdf.set_font("Montserrat", "", 12)
+    pdf.set_text_color(200, 200, 200)
+    pdf.multi_cell(160, 6, top_story.get("quick_take", ""))
+    
+    pdf.set_y(pdf.get_y() + 5)
+    pdf.set_x(20)
+    pdf.multi_cell(160, 6, "It has been a long 24 hours. Here is the rundown, in 7 minutes.")
+    
+    # Footer
+    pdf.set_y(-35)
+    pdf.set_draw_color(50, 50, 50)
+    pdf.line(20, 262, 190, 262)
+    
+    pdf.set_y(267)
+    pdf.set_x(20)
+    pdf.set_font("Montserrat", "B", 10)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(pdf.get_string_width("Five minutes. Then you are "), 5, "Five minutes. Then you are ", ln=0)
+    pdf.set_text_color(*NEON_GREEN)
+    pdf.cell(20, 5, "ahead.", ln=0)
+    
+    pdf.set_font("Montserrat", "B", 7)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 4, "SENT BY", ln=1, align="R")
+    
+    pdf.set_font("Montserrat", "B", 10)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(0, 5, "AoE Automated System", ln=1, align="R")
+
+def draw_toc_page(pdf: CustomPDF, stories: list):
+    pdf.add_page()
+    pdf.set_y(30)
+    
+    pdf.set_fill_color(*NEON_GREEN)
+    pdf.rect(20, 30, 40, 7, 'F')
+    pdf.set_xy(20, 31)
+    pdf.set_font("Montserrat", "B", 8)
+    pdf.set_text_color(*BLACK)
+    pdf.cell(40, 5, "MORNING DIGEST", align="C", ln=1)
+    
+    pdf.set_y(45)
+    pdf.set_font("Montserrat", "B", 32)
+    pdf.set_text_color(*BLACK)
+    pdf.cell(0, 10, "What we cover today.", ln=1)
+    
+    pdf.set_y(60)
+    pdf.set_font("Montserrat", "", 11)
+    pdf.set_text_color(80, 80, 80)
+    pdf.multi_cell(170, 6, f"{len(stories)} stories from the last 24 hours. Read in this order and you will be ahead of 90% of people by lunch.")
+    
+    pdf.set_y(80)
+    
+    for idx, story in enumerate(stories):
+        if pdf.get_y() > 250:
+            pdf.add_page()
+            pdf.set_y(30)
+            
+        y_start = pdf.get_y()
+        pdf.set_draw_color(220, 220, 220)
+        pdf.line(20, y_start, 190, y_start)
+        
+        pdf.set_y(y_start + 5)
+        pdf.set_fill_color(*BLACK)
+        pdf.rect(20, y_start + 8, 15, 15, 'F')
+        pdf.set_xy(20, y_start + 12)
+        pdf.set_font("Montserrat", "B", 12)
+        pdf.set_text_color(*WHITE)
+        pdf.cell(15, 6, str(idx + 1).zfill(2), align="C")
+        
+        pdf.set_xy(45, y_start + 8)
+        pdf.set_font("Montserrat", "B", 12)
+        pdf.set_text_color(*BLACK)
+        pdf.multi_cell(145, 6, story.get("headline", "News Item"))
+        
+        pdf.set_x(45)
+        pdf.set_font("Montserrat", "", 9)
+        pdf.set_text_color(100, 100, 100)
+        
+        desc = story.get("quick_take", "")
+        if len(desc) > 80: desc = desc[:80] + "..."
+        pdf.multi_cell(145, 5, desc)
+        
+        pdf.set_y(pdf.get_y() + 8)
+
+def draw_article_page(pdf: CustomPDF, index: int, story: dict):
+    pdf.add_page()
+    
+    pdf.set_y(30)
+    pdf.set_fill_color(*NEON_GREEN)
+    pdf.rect(20, 30, 2, 6, 'F')
+    
+    pdf.set_xy(25, 30)
+    pdf.set_font("Montserrat", "B", 8)
+    pdf.set_text_color(*BLACK)
+    cat_text = story.get("category", "TECH . NEWS")
+    pdf.cell(0, 6, f"{str(index).zfill(2)} . {cat_text.upper()}", ln=1)
+    
+    pdf.set_y(42)
+    pdf.set_font("Montserrat", "B", 28)
+    pdf.set_text_color(*BLACK)
+    
+    headline = story.get("headline", "News Story")
+    highlight = story.get("headline_highlight", "")
+    
+    words = headline.split()
+    line = ""
+    for word in words:
+        if pdf.get_string_width(line + word) > 160:
+            pdf.set_x(20)
+            pdf.cell(0, 12, line, ln=1)
+            line = word + " "
+        else:
+            line += word + " "
+            
+    pdf.set_x(20)
+    if highlight and highlight in line:
+        parts = line.split(highlight)
+        pdf.cell(pdf.get_string_width(parts[0]), 12, parts[0], ln=0)
+        
+        hx = pdf.get_x()
+        hy = pdf.get_y()
+        draw_neon_highlight(pdf, highlight, 28, hx, hy + 9)
+        
+        pdf.cell(pdf.get_string_width(highlight), 12, highlight, ln=0)
+        
+        if len(parts) > 1:
+            pdf.cell(pdf.get_string_width(parts[1]), 12, parts[1], ln=1)
+        else:
+            pdf.ln(12)
+    else:
+        pdf.cell(0, 12, line, ln=1)
+        
+    pdf.set_y(pdf.get_y() + 10)
+    start_y = pdf.get_y()
+    
+    pdf.set_fill_color(*LIGHT_GREY)
+    pdf.rect(20, start_y, 170, 40, 'F')
+    
+    pdf.set_fill_color(*BLACK)
+    pdf.rect(25, start_y - 3, 25, 6, 'F')
+    pdf.set_xy(25, start_y - 2)
+    pdf.set_font("Montserrat", "B", 7)
+    pdf.set_text_color(*NEON_GREEN)
+    pdf.cell(25, 4, "QUICK TAKE", align="C", ln=1)
+    
+    pdf.set_xy(25, start_y + 8)
+    pdf.set_font("Montserrat", "", 10)
+    pdf.set_text_color(30, 30, 30)
+    pdf.multi_cell(160, 6, story.get("quick_take", ""))
+    
+    pdf.set_y(max(pdf.get_y(), start_y + 40) + 10)
+    
+    pdf.set_fill_color(*NEON_GREEN)
+    pdf.rect(20, pdf.get_y() + 1, 4, 4, 'F')
+    pdf.set_x(28)
+    pdf.set_font("Montserrat", "B", 8)
+    pdf.set_text_color(*BLACK)
+    pdf.cell(0, 6, "WHAT YOU NEED TO KNOW", ln=1)
+    
+    pdf.set_y(pdf.get_y() + 5)
+    
+    bullets = story.get("bullets", [])
+    for bullet in bullets:
+        if pdf.get_y() > 220:
+            pdf.add_page()
+            pdf.set_y(30)
+            
+        pdf.set_x(20)
+        pdf.set_font("Montserrat", "B", 12)
+        pdf.cell(10, 6, "—", ln=0)
+        
+        topic = bullet.get("topic", "")
+        if topic:
+            pdf.set_font("Montserrat", "B", 10)
+            pdf.cell(pdf.get_string_width(topic + ": "), 6, topic + ": ", ln=0)
+            
+        pdf.set_font("Montserrat", "", 10)
+        pdf.multi_cell(0, 6, bullet.get("description", bullet.get("text", "")))
+        pdf.ln(4)
+        
+    if pdf.get_y() > 230:
+        pdf.add_page()
+        pdf.set_y(30)
+        
+    pdf.set_y(pdf.get_y() + 10)
+    wy = pdf.get_y()
+    pdf.set_fill_color(*BLACK)
+    pdf.rect(20, wy, 170, 35, 'F')
+    
+    pdf.set_xy(25, wy + 5)
+    pdf.set_font("Montserrat", "B", 8)
+    pdf.set_text_color(*NEON_GREEN)
+    pdf.cell(0, 6, "THE WILD PART", ln=1)
+    
+    pdf.set_xy(25, wy + 12)
+    pdf.set_font("Montserrat", "B", 10)
+    pdf.set_text_color(*WHITE)
+    pdf.multi_cell(160, 6, story.get("wild_part", ""))
+    
+def generate_digest_pdf(stories: list) -> str:
+    date_str = datetime.now().strftime("%d %B %Y")
+    issue_num = "003"
+    
+    pdf = CustomPDF(date_str, issue_num)
+    
+    if not stories:
+        return ""
+        
+    draw_cover_page(pdf, stories[0])
+    draw_toc_page(pdf, stories)
+    
+    for idx, story in enumerate(stories):
+        draw_article_page(pdf, idx + 1, story)
+        
+    file_name = f"AoE Tech News({datetime.now().strftime('%d-%m-%Y')}).pdf"
+    pdf.output(file_name)
+    return file_name
