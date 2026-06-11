@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from functools import wraps
 from aiohttp import web
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden, BadRequest
 
@@ -40,20 +40,30 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a welcome message with an inline keyboard."""
+    first_name = update.effective_user.first_name or "Reader"
     welcome_text = (
-        f"👋 Welcome to *{BRAND_NAME}*!\n\n"
-        f"I am your autonomous tech journalism bot. I scrape the global tech news, "
-        f"structure it with AI, and deliver a premium PDF magazine straight to you.\n\n"
-        f"What would you like to do?"
+        f"🚀 *{BRAND_NAME.upper()}* | Autonomous Intelligence\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👋 *Welcome, {first_name}!* \n\n"
+        f"I am your autonomous tech journalism agent. I curate key global developments, "
+        f"synthesize insights using advanced AI models, and deliver a premium, "
+        f"highly-structured PDF digest directly to you.\n\n"
+        f"💡 *Key Coverage Areas:*\n"
+        f"• 🧠 *Artificial Intelligence* & deep learning breakthroughs.\n"
+        f"• 🔒 *Cybersecurity* threats & defense protocols.\n"
+        f"• 🌐 *Infrastructure* & scalable cloud systems.\n"
+        f"• 📈 *Macro Tech Trends* & VC landscape.\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ *Choose an option below to interact:*"
     )
     
     keyboard = [
         [
-            InlineKeyboardButton("📰 Latest Digest", callback_data="latest"),
-            InlineKeyboardButton("ℹ️ About", callback_data="about")
+            InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest"),
+            InlineKeyboardButton("ℹ️ Project About", callback_data="about")
         ],
         [
-            InlineKeyboardButton("🔔 Subscribe", callback_data="subscribe"),
+            InlineKeyboardButton("🔔 Subscribe Daily", callback_data="subscribe"),
             InlineKeyboardButton("🔕 Unsubscribe", callback_data="unsubscribe")
         ]
     ]
@@ -160,6 +170,68 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
     await scheduled_broadcast(context)
     await update.message.reply_text("✅ Global broadcast completed!")
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /help command."""
+    help_text = (
+        f"📖 *{BRAND_NAME}* | Help Menu\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🤖 *General Commands:*\n"
+        f"• `/start` - Greet and show main menu.\n"
+        f"• `/news <topic>` - Fetch a targeted news digest (e.g., `/news AI`).\n"
+        f"• `/status` - Check database & subscription status.\n"
+        f"• `/help` - Show this help message.\n\n"
+    )
+    
+    # Check if the user is the admin
+    user_id = str(update.effective_user.id)
+    admin_id = os.getenv("ADMIN_ID", "6038057345")
+    if user_id == admin_id:
+        help_text += (
+            f"⚙️ *Admin Commands:*\n"
+            f"• `/stats` - View subscriber stats.\n"
+            f"• `/broadcast` - Trigger immediate global broadcast.\n\n"
+        )
+        
+    help_text += (
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"If you have any questions or feedback, contact @Sumanth."
+    )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /status command."""
+    chat_id = update.message.chat_id
+    
+    # Check database connection state
+    try:
+        pool = await database.get_pool()
+        db_ok = pool is not None
+    except Exception:
+        db_ok = False
+        
+    db_status = "🟢 Operational" if db_ok else "🔴 Offline"
+    
+    # Check current user subscription status
+    subscribed = False
+    if db_ok:
+        try:
+            subscribers = await database.get_all_subscribers()
+            subscribed = chat_id in subscribers
+        except Exception:
+            pass
+            
+    sub_status = "🔔 Subscribed" if subscribed else "🔕 Not Subscribed"
+    
+    status_text = (
+        f"🖥️ *{BRAND_NAME}* | System Status\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"⚙️ *Database*: {db_status}\n"
+        f"👤 *Your Subscription*: {sub_status}\n"
+        f"🕒 *Server Time*: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━"
+    )
+    await update.message.reply_text(status_text, parse_mode="Markdown")
+
 async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle all other text messages."""
     text = (
@@ -246,6 +318,31 @@ async def post_init(app: Application) -> None:
     """Initialize the database during bot startup."""
     await database.init_db()
     app.bot_data['web_runner'] = await start_web_server()
+    
+    # Register admin-scoped commands dynamically on startup
+    try:
+        admin_id = os.getenv("ADMIN_ID", "6038057345")
+        if admin_id:
+            try:
+                admin_chat_id = int(admin_id)
+                admin_commands = [
+                    BotCommand("start", "🚀 Greet & show menu"),
+                    BotCommand("news", "📰 Fetch news (e.g., /news AI)"),
+                    BotCommand("status", "🖥️ Check system status"),
+                    BotCommand("help", "📖 Show help menu"),
+                    BotCommand("stats", "📊 View subscriber stats"),
+                    BotCommand("broadcast", "📢 Force immediate broadcast")
+                ]
+                success = await app.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_chat_id))
+                logger.info(f"Telegram set_my_commands API response: {success}")
+                
+                # Verify registration
+                registered = await app.bot.get_my_commands(scope=BotCommandScopeChat(chat_id=admin_chat_id))
+                logger.info(f"Verified registered commands for admin {admin_chat_id}: {[cmd.command for cmd in registered]}")
+            except ValueError:
+                logger.warning(f"Invalid ADMIN_ID format: {admin_id}")
+    except Exception as e:
+        logger.error(f"Failed to register admin-scoped commands with Telegram: {e}")
 
 async def post_stop(app: Application) -> None:
     """Gracefully close external resources."""
@@ -271,6 +368,10 @@ def build_bot() -> Application:
     
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("news", news_command))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("broadcast", admin_broadcast_command))
+    app.add_handler(CommandHandler("stats", admin_stats_command))
     app.add_handler(CommandHandler("admin_stats", admin_stats_command))
     app.add_handler(CommandHandler("admin_broadcast", admin_broadcast_command))
     app.add_handler(CallbackQueryHandler(button_handler))
