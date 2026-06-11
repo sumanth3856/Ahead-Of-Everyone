@@ -36,9 +36,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-class SubApplication(Application):
-    """Subclass of Application to explicitly support weak references in Python 3.13."""
-    __slots__ = ('__weakref__',)
+# Application is used directly to support Python 3.11+ compatibility.
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a welcome message with an inline keyboard."""
@@ -266,7 +264,6 @@ def build_bot() -> Application:
     app = (
         ApplicationBuilder()
         .token(BOT_TOKEN)
-        .application_class(SubApplication)
         .post_init(post_init)
         .post_stop(post_stop)
         .build()
