@@ -227,13 +227,13 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     pdf.set_y(pdf.get_y() + 15)
     
-    # THE BRIEF 
+    # THE BRIEF
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
     text = "THE BRIEF"
     w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 6, text, align="C", ln=1, fill=True)
+    pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
     pdf.set_y(pdf.get_y() + 2)
     pdf.set_font("Montserrat", "", 13) # Using 13pt Regular for "thicker" feel
@@ -251,7 +251,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_text_color(*WHITE)
     text = "CORE BREAKDOWN"
     w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 6, text, align="C", ln=1, fill=True)
+    pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     pdf.set_y(pdf.get_y() + 4)
     
     bullets = story.get("core_breakdown", [])
@@ -270,10 +270,11 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         pdf.set_x(30)
         desc = bullet.get("description", bullet.get("text", ""))
         
-        # Set left margin to 30 temporarily so text wraps properly
-        pdf.set_left_margin(30)
-        
         # Inline bolding using write()
+        old_l_margin = pdf.l_margin
+        pdf.set_left_margin(30)
+        pdf.set_x(30)
+        
         if topic:
             pdf.set_font("Montserrat", "B", 13)
             pdf.set_text_color(*BLACK)
@@ -283,8 +284,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         pdf.set_text_color(*BLACK)
         pdf.write(7.5, f"{desc}\n\n")
         
-        # Restore left margin
-        pdf.set_left_margin(12)
+        pdf.set_left_margin(old_l_margin)
         
     if pdf.get_y() > 220:
         pdf.add_page()
@@ -292,7 +292,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         
     pdf.set_y(pdf.get_y() + 10)
     
-    # THE EDGE (Pull-Quote Style)
+    # T H E   E D G E (Pull-Quote Style)
     wy = pdf.get_y()
     pdf.set_fill_color(*BRAND_ACCENT)
     # Thick bold purple line on the left
@@ -300,10 +300,11 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     pdf.set_xy(18, wy + 2)
     pdf.set_font("Montserrat", "B", 10)
+    pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
     text = "THE EDGE"
     w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 6, text, align="C", ln=1, fill=True)
+    pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
     pdf.set_xy(18, wy + 10)
     pdf.set_font("Montserrat", "B", 16)
@@ -388,11 +389,10 @@ def draw_conclusion_page(pdf: CustomPDF):
 
     # Custom Conclusion Footer
     pdf.set_y(270)
-    
     pdf.set_x(12)
-    pdf.set_font("Montserrat", "B", 10)
+    pdf.set_font("Montserrat", "B", 12)
     pdf.set_text_color(*WHITE)
-    pdf.cell(100, 6, "AHEAD OF EVERYONE", align="L", ln=0)
+    pdf.cell(0, 6, "AHEAD OF EVERYONE", align="L", ln=0)
     
     # Right corner: Date (DD/MM/YYYY)
     date_str = datetime.now().strftime("%d/%m/%Y")
