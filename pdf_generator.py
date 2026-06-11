@@ -112,15 +112,21 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_text_color(*WHITE)
     pdf.cell(w, 8, date_text, align="C", ln=1, fill=True)
     
+    # Logo
+    logo_path = "assets/logo.png"
+    if os.path.exists(logo_path):
+        # A4 width is 210. Centered x for 25mm width is (210-25)/2 = 92.5
+        pdf.image(logo_path, x=92.5, y=20, w=25, h=25)
+        
     # Title - Centered, massive
-    pdf.set_y(40)
+    pdf.set_y(50)
     pdf.set_font("Montserrat", "B", 52)
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 18, "AHEAD OF", align="C", ln=1)
     pdf.cell(0, 18, "EVERYONE", align="C", ln=1)
     
     # Tagline - Centered
-    pdf.set_y(80)
+    pdf.set_y(90)
     pdf.set_font("Montserrat", "", 12)
     pdf.set_text_color(*WHITE)
     if custom_topic:
@@ -130,8 +136,8 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.cell(0, 8, tagline, align="C", ln=1)
     
     # Vertical Stripe (Anchor for Feature Block)
-    # x=12, w=5, starting from y=120 down to the bottom margin
-    wy = 120
+    # x=12, w=5, starting from y=130 down to the bottom margin
+    wy = 130
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.rect(12, wy, 5, 297 - wy - 12, 'F')
     

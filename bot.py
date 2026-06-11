@@ -13,7 +13,7 @@ from aiohttp import web
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telegram.error import Forbidden, BadRequest
+from telegram.error import Forbidden, BadRequest, Conflict, NetworkError, TimedOut
 
 def admin_only(func):
     @wraps(func)
@@ -43,6 +43,15 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Application is used directly to support Python 3.11+ compatibility.
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and handle specific telegram-bot exceptions gracefully."""
+    if isinstance(context.error, Conflict):
+        logger.warning("Conflict error detected. This usually happens during Render deploys when the new instance starts before the old one fully shuts down. Ignoring.")
+    elif isinstance(context.error, (NetworkError, TimedOut)):
+        logger.warning(f"Network/Timeout error: {context.error}")
+    else:
+        logger.error("Exception while handling an update:", exc_info=context.error)
 
 def get_main_menu(first_name: str):
     welcome_text = (
@@ -638,6 +647,9 @@ def build_bot() -> Application:
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general_message_handler))
     
+    # Register global error handler
+    app.add_error_handler(error_handler)
+    
     # Schedule the daily broadcast at 10:00 AM IST (Asia/Kolkata)
     # Using python-telegram-bot's built-in job queue
     job_queue = app.job_queue
@@ -650,4 +662,4 @@ def build_bot() -> Application:
 if __name__ == "__main__":
     app = build_bot()
     logger.info("Bot is starting... Press Ctrl+C to stop.")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
