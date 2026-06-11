@@ -160,10 +160,10 @@ JSON Schema:
 
     primary_model = config.OPENROUTER_MODEL
     backup_models = [
-        "openrouter/free",
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "google/gemma-2-9b-it:free",
-        "qwen/qwen-2.5-7b-instruct:free"
+        "openrouter/free",                              # Auto-routes to any available free model
+        "meta-llama/llama-3.3-70b-instruct:free",       # Llama 3.3 70B (confirmed June 2026)
+        "deepseek/deepseek-r1-distill-llama-70b:free",  # DeepSeek R1 Distill
+        "qwen/qwen3-30b-a3b:free",                      # Qwen3 30B
     ]
 
     # 1. Primary Model Attempts (Initial + 1 Retry)
