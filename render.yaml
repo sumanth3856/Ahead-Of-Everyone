@@ -1,15 +1,11 @@
 services:
-  - type: worker
+  - type: web
     name: ahead-of-everyone-bot
     env: docker
     dockerfilePath: ./Dockerfile
-    disk:
-      name: bot-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
-      - key: DB_PATH
-        value: /data/subscriptions.db
+      - key: DATABASE_URL
+        sync: false
       - key: ADMIN_ID
         value: "6038057345"
       - key: TELEGRAM_BOT_TOKEN

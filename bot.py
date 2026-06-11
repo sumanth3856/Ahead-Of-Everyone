@@ -5,6 +5,7 @@ from datetime import time, datetime
 import pytz
 from dotenv import load_dotenv
 from functools import wraps
+from aiohttp import web
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -190,9 +191,25 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
             
     logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
 
+async def ping_handler(request):
+    return web.Response(text="OK")
+
+async def start_web_server():
+    port = int(os.getenv("PORT", 8080))
+    web_app = web.Application()
+    web_app.router.add_get('/ping', ping_handler)
+    web_app.router.add_get('/', ping_handler)
+    
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    logger.info(f"Dummy web server started on port {port}")
+
 async def post_init(app: Application) -> None:
     """Initialize the database during bot startup."""
     await database.init_db()
+    await start_web_server()
 
 def build_bot() -> Application:
     """Build the bot application."""
