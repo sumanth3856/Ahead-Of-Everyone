@@ -2,10 +2,14 @@ import asyncpg
 import logging
 import os
 import asyncio
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.strip().strip("'\"")
+
 _pool = None
 _pool_lock = asyncio.Lock()
 
@@ -13,6 +17,11 @@ async def get_pool():
     global _pool
     async with _pool_lock:
         if _pool is None and DATABASE_URL:
+            try:
+                parsed = urllib.parse.urlparse(DATABASE_URL)
+                logger.info(f"Connecting to database host: '{parsed.hostname}' (port: {parsed.port}, database: '{parsed.path.lstrip('/')}')")
+            except Exception as pe:
+                logger.error(f"Failed to parse DATABASE_URL: {pe}")
             _pool = await asyncpg.create_pool(DATABASE_URL)
     return _pool
 
