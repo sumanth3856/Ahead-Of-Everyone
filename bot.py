@@ -46,29 +46,21 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 def get_main_menu(first_name: str):
     welcome_text = (
-        f"🚀 *{BRAND_NAME.upper()}* | Autonomous Intelligence\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👋 *Welcome, {first_name}!* \n\n"
-        f"I am your autonomous tech journalism agent. I curate key global developments, "
-        f"synthesize insights using advanced AI models, and deliver a premium, "
-        f"highly-structured PDF digest directly to you.\n\n"
-        f"💡 *Key Coverage Areas:*\n"
-        f"• 🧠 *Artificial Intelligence* & deep learning breakthroughs.\n"
-        f"• 🔒 *Cybersecurity* threats & defense protocols.\n"
-        f"• 🌐 *Infrastructure* & scalable cloud systems.\n"
-        f"• 📈 *Macro Tech Trends* & VC landscape.\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ *Choose an option below to interact:*"
+        f"*[ INITIALIZING SECURE CONNECTION... ]*\n\n"
+        f"Welcome to *Ahead of Everyone*.\n"
+        f"You are now tapped into the daily autonomous tech intelligence feed.\n\n"
+        f"I process thousands of raw data points across the tech industry to deliver the absolute apex of daily news—curated, summarized, and formatted into a premium intelligence brief.\n\n"
+        f"Click below to generate your first tactical briefing, or subscribe to get it automatically delivered every morning at 10 AM IST."
     )
     
     keyboard = [
         [
             InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest"),
-            InlineKeyboardButton("ℹ️ Project About", callback_data="about")
+            InlineKeyboardButton("ℹ️ About This Bot", callback_data="about")
         ],
         [
-            InlineKeyboardButton("🔔 Subscribe Daily", callback_data="subscribe"),
-            InlineKeyboardButton("🔕 Unsubscribe", callback_data="unsubscribe")
+            InlineKeyboardButton("🔔 Get Daily Digests", callback_data="subscribe"),
+            InlineKeyboardButton("🔕 Stop Daily Digests", callback_data="unsubscribe")
         ]
     ]
     return welcome_text, InlineKeyboardMarkup(keyboard)
@@ -82,18 +74,21 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def update_loading_message(message, context, topic=None) -> None:
     """Periodically update the loading message and trigger active chat actions to keep the user engaged."""
     phases = [
-        {"name": "Connect & Fetch", "progress": 15, "detail": "📡 Initializing tech intelligence arrays..."},
-        {"name": "Connect & Fetch", "progress": 25, "detail": "🔍 Scanning world news feeds & filtering signals..."},
-        {"name": "AI Synthesis", "progress": 40, "detail": "🧠 NLP parsing, filtering & deduplication..."},
-        {"name": "AI Synthesis", "progress": 55, "detail": "⚡ Running AI model pipelines for synthesis..."},
-        {"name": "PDF Generation", "progress": 70, "detail": "🎨 Designing & rendering magazine layout..."},
-        {"name": "PDF Generation", "progress": 85, "detail": "📦 Compiling assets & generating PDF binary..."},
-        {"name": "Transmission", "progress": 95, "detail": "🚀 Finalizing package transmission..."}
+        {"name": "Finding Stories", "progress": 15, "detail": "🌐 Connecting to news outlets..."},
+        {"name": "Finding Stories", "progress": 25, "detail": "🔍 Searching the web for the latest updates..."},
+        {"name": "Writing Summaries", "progress": 40, "detail": "✂️ Sorting through stories to pick the best ones..."},
+        {"name": "Writing Summaries", "progress": 55, "detail": "✍️ Writing clear summaries and key highlights..."},
+        {"name": "Creating PDF", "progress": 70, "detail": "🎨 Formatting the pages into a clean magazine layout..."},
+        {"name": "Creating PDF", "progress": 85, "detail": "✨ Putting the final touches on your newsletter..."},
+        {"name": "Delivering", "progress": 95, "detail": "🚀 Sending the PDF file straight to your chat..."}
     ]
     
     idx = 0
-    topic_str = f" for *{topic}*" if topic else ""
+    topic_str = f" about *{topic}*" if topic else ""
     chat_id = message.chat_id
+    
+    # Emojis that change on each tick to create an animated feel
+    ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️"]
     
     while True:
         try:
@@ -106,26 +101,27 @@ async def update_loading_message(message, context, topic=None) -> None:
                 
             await asyncio.sleep(8)
             current = phases[idx % len(phases)]
+            tick_emoji = ticker_emojis[idx % len(ticker_emojis)]
             
-            p1_stat = "⚡ DONE" if idx >= 2 else "⚙️ RUNNING"
-            p2_stat = "⚡ DONE" if idx >= 4 else ("⚙️ RUNNING" if idx >= 2 else "⏳ PENDING")
-            p3_stat = "⚡ DONE" if idx >= 6 else ("⚙️ RUNNING" if idx >= 4 else "⏳ PENDING")
-            p4_stat = "⚡ DONE" if idx >= 7 else ("⚙️ RUNNING" if idx >= 6 else "⏳ PENDING")
+            p1_stat = "✅ Done" if idx >= 2 else f"{tick_emoji} Working..."
+            p2_stat = "✅ Done" if idx >= 4 else (f"{tick_emoji} Working..." if idx >= 2 else "⏳ Waiting")
+            p3_stat = "✅ Done" if idx >= 6 else (f"{tick_emoji} Working..." if idx >= 4 else "⏳ Waiting")
+            p4_stat = "✅ Done" if idx >= 7 else (f"{tick_emoji} Working..." if idx >= 6 else "⏳ Waiting")
             
             filled_length = int(current["progress"] / 5)
             gauge = "█" * filled_length + "░" * (20 - filled_length)
             
             text = (
-                f"⚙️ *AHEAD OF EVERYONE* | Intelligence Pipeline\n"
+                f"{tick_emoji} *{BRAND_NAME.upper()}* | Preparing Newsletter\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📡 *Connect & Fetch:*    {p1_stat}\n"
-                f"🧠 *AI Synthesis:*       {p2_stat}\n"
-                f"🎨 *PDF Generation:*     {p3_stat}\n"
-                f"🚀 *Transmission:*       {p4_stat}\n"
+                f"🌐 *Finding Stories:*     {p1_stat}\n"
+                f"✍️ *Writing Summaries:*   {p2_stat}\n"
+                f"🎨 *Creating PDF:*       {p3_stat}\n"
+                f"🚀 *Delivering:*         {p4_stat}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"{current['detail']}\n\n"
                 f"`[{gauge}]`  *{current['progress']}%*\n\n"
-                f"⏳ Preparing custom digest{topic_str}. Please standby."
+                f"⏳ Fetching custom news{topic_str}. Just a moment!"
             )
             await message.edit_text(text=text, parse_mode="Markdown")
             idx += 1
@@ -156,7 +152,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
         cached_file_id = await database.get_cached_file_id_exact("latest")
         if cached_file_id:
-            caption = f"📰 *{BRAND_NAME}* | Here is the latest digest!\n\nInnovating the future, today."
+            caption = f"📰 *{BRAND_NAME}* | Here is your daily newsletter!\n\nEnjoy reading!"
             try:
                 await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
                 try:
@@ -167,7 +163,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             except Exception as e:
                 logger.warning(f"Failed to send cached file_id, generating fresh: {e}")
                 
-        loading_msg = await query.edit_message_text(text="⏳ Initializing Ahead of Everyone intelligence protocols... Please standby.")
+        loading_msg = await query.edit_message_text(text="⏳ Connecting to news sources... Just a moment!")
         
         # Start dynamic progress updates in the background
         ticker_task = asyncio.create_task(update_loading_message(loading_msg, context))
@@ -189,7 +185,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
         if pdf_filename and os.path.exists(pdf_filename):
             try:
-                caption = f"📰 *{BRAND_NAME}* | Here is the latest digest!\n\nInnovating the future, today."
+                caption = f"📰 *{BRAND_NAME}* | Here is your daily newsletter!\n\nEnjoy reading!"
                 pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
                 with open(pdf_filename, "rb") as file:
                     msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
@@ -202,31 +198,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     logger.error(f"Failed to delete {pdf_filename}: {e}")
         else:
             back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-            await context.bot.send_message(chat_id=chat_id, text="❌ Failed to generate the digest. Please try again later.", reply_markup=back_keyboard)
+            await context.bot.send_message(chat_id=chat_id, text="❌ Sorry, I had some trouble generating the newsletter. Please try again in a few minutes!", reply_markup=back_keyboard)
             
     elif action == "subscribe":
         added = await database.add_subscriber(chat_id)
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
         if added:
-            await query.edit_message_text(text="✅ You have successfully subscribed! You will receive the daily tech digest automatically.", reply_markup=back_keyboard)
+            await query.edit_message_text(text="✅ Subscribed successfully! You will now receive daily news updates automatically.", reply_markup=back_keyboard)
         else:
-            await query.edit_message_text(text="ℹ️ You are already subscribed.", reply_markup=back_keyboard)
+            await query.edit_message_text(text="ℹ️ You are already subscribed to daily updates.", reply_markup=back_keyboard)
             
     elif action == "unsubscribe":
         removed = await database.remove_subscriber(chat_id)
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
         if removed:
-            await query.edit_message_text(text="🔕 You have unsubscribed. You will no longer receive daily digests.", reply_markup=back_keyboard)
+            await query.edit_message_text(text="🔕 Unsubscribed successfully. You will no longer receive daily updates.", reply_markup=back_keyboard)
         else:
-            await query.edit_message_text(text="ℹ️ You are not currently subscribed.", reply_markup=back_keyboard)
+            await query.edit_message_text(text="ℹ️ You are not currently subscribed to daily updates.", reply_markup=back_keyboard)
             
     elif action == "about":
         about_text = (
-            f"🤖 *About {BRAND_NAME}*\n\n"
-            f"This bot is a fully autonomous AI-powered pipeline. It aggregates top tech news, "
-            f"uses advanced LLMs (like Nemotron & Gemma) to structure it, and renders a stunning "
-            f"PDF magazine entirely from scratch.\n\n"
-            f"Curated & Engineered by Sumanth."
+            f"✨ *About {BRAND_NAME}*\n\n"
+            f"This bot is powered by smart AI. It automatically searches for major news stories, "
+            f"rewrites them to be quick and easy to read, and designs a premium PDF newsletter "
+            f"just for you.\n\n"
+            f"Designed & Built with ❤️ by Sumanth."
         )
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
         await query.edit_message_text(text=about_text, reply_markup=back_keyboard, parse_mode="Markdown")
@@ -260,8 +256,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await query.edit_message_text(text=stats_text, reply_markup=reply_markup, parse_mode="Markdown")
             
         elif action == "admin_broadcast":
-            await query.edit_message_text(text="⏳ Forcing a global broadcast now. Please wait...")
-            await scheduled_broadcast(context, force_fresh=True)
+            loading_msg = await query.edit_message_text(text="⏳ Preparing global broadcast. Please standby...")
+            ticker_task = asyncio.create_task(update_loading_message(loading_msg, context))
+            try:
+                await scheduled_broadcast(context, force_fresh=True)
+            finally:
+                ticker_task.cancel()
+                try:
+                    await ticker_task
+                except asyncio.CancelledError:
+                    pass
+                try:
+                    await loading_msg.delete()
+                except Exception:
+                    pass
             keyboard = [
                 [
                     InlineKeyboardButton("📊 View Stats", callback_data="admin_stats"),
@@ -269,7 +277,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text(text="✅ Global broadcast completed!", reply_markup=reply_markup, parse_mode="Markdown")
+            await context.bot.send_message(chat_id=chat_id, text="✅ Global broadcast completed successfully!", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /news command to fetch targeted news using semantic matching."""
@@ -278,12 +286,12 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     if not query:
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-        await update.message.reply_text("Please provide a topic. Example: `/news cybersecurity`", reply_markup=back_keyboard, parse_mode="Markdown")
+        await update.message.reply_text("Please specify a topic! Example: `/news space exploration`", reply_markup=back_keyboard, parse_mode="Markdown")
         return
         
     cached_file_id = await database.get_cached_file_id_semantic(query)
     if cached_file_id:
-        caption = f"✅ Deepdive complete. Delivering payload for *{query}*..."
+        caption = f"✅ Search finished! Sending your newsletter about *{query}*..."
         keyboard = [
             [
                 InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest"),
@@ -297,7 +305,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         except Exception as e:
             logger.warning(f"Failed to send cached targeted file_id, generating fresh: {e}")
             
-    loading_msg = await update.message.reply_text(f"⏳ Initializing Ahead of Everyone intelligence protocols... Please standby.", parse_mode="Markdown")
+    loading_msg = await update.message.reply_text(f"⏳ Connecting to news sources... Just a moment!", parse_mode="Markdown")
     
     # Start dynamic progress updates in the background
     ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, topic=query))
@@ -319,7 +327,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     if pdf_filename and os.path.exists(pdf_filename):
         try:
-            caption = f"✅ Deepdive complete. Delivering payload for *{query}*..."
+            caption = f"✅ Search finished! Sending your newsletter about *{query}*..."
             pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
             keyboard = [
                 [
@@ -339,7 +347,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 logger.error(f"Failed to delete {pdf_filename}: {e}")
     else:
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to find enough news or generate the digest for *{query}*.", reply_markup=back_keyboard, parse_mode="Markdown")
+        await context.bot.send_message(chat_id=chat_id, text=f"😔 Sorry, I couldn't find enough news about *{query}* right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
 
 @admin_only
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -362,10 +370,21 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 @admin_only
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Force an immediate daily broadcast (Admin Only)."""
-    await update.message.reply_text("⏳ Forcing a fresh global broadcast now. Please wait...")
-    # Run the scheduled broadcast immediately, forcing a fresh cache overwrite
-    await scheduled_broadcast(context, force_fresh=True)
-    
+    loading_msg = await update.message.reply_text("⏳ Preparing global broadcast. Please standby...")
+    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context))
+    try:
+        await scheduled_broadcast(context, force_fresh=True)
+    finally:
+        ticker_task.cancel()
+        try:
+            await ticker_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await loading_msg.delete()
+        except Exception:
+            pass
+            
     keyboard = [
         [
             InlineKeyboardButton("📊 View Stats", callback_data="admin_stats"),
@@ -373,7 +392,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("✅ Global broadcast completed!", reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text("✅ Global broadcast completed successfully!", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""
@@ -385,17 +404,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"📖 *{BRAND_NAME}* | Help Menu\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"🤖 *General Commands:*\n"
-        f"• `/start` - Greet and show main menu.\n"
-        f"• `/news <topic>` - Fetch a targeted news digest (e.g., `/news AI`).\n"
-        f"• `/help` - Show this help message.\n\n"
+        f"• `/start` - Open the main menu.\n"
+        f"• `/news <topic>` - Get news about a specific topic (e.g., `/news solar energy`).\n"
+        f"• `/help` - Show this help guide.\n\n"
     )
     
     if is_admin:
         help_text += (
             f"⚙️ *Admin Commands:*\n"
-            f"• `/status` - Check database & system status.\n"
-            f"• `/stats` - View subscriber stats.\n"
-            f"• `/broadcast` - Trigger immediate global broadcast.\n\n"
+            f"• `/status` - Check if the database and system are online.\n"
+            f"• `/stats` - View total subscriber count.\n"
+            f"• `/broadcast` - Send out today's newsletter to all subscribers.\n\n"
         )
         
     help_text += (

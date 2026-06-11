@@ -20,6 +20,9 @@ if DATABASE_URL:
 _pool = None
 _pool_lock = asyncio.Lock()
 
+# Cache version to automatically invalidate older caches on design updates
+CACHE_VERSION = "v3"
+
 # Global flag to track if the pgvector/topic_embedding column is supported and available in the database
 HAS_VECTOR_COLUMN = True
 
@@ -189,13 +192,14 @@ async def get_cached_file_id_exact(topic: str) -> str | None:
     pool = await get_pool()
     if pool is None: return None
     
+    versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
         async with pool.acquire() as conn:
             row = await conn.fetchrow("""
                 SELECT file_id FROM digests_cache 
                 WHERE topic = $1 AND generated_date_ist::DATE = $2::DATE
-            """, topic, current_ist_date)
+            """, versioned_topic, current_ist_date)
             if row:
                 return row['file_id']
     except Exception as e:
@@ -206,6 +210,7 @@ async def set_cached_file_id_exact(topic: str, file_id: str):
     pool = await get_pool()
     if pool is None: return
     
+    versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
         async with pool.acquire() as conn:
@@ -217,7 +222,7 @@ async def set_cached_file_id_exact(topic: str, file_id: str):
                     SET file_id = EXCLUDED.file_id,
                         generated_date_ist = EXCLUDED.generated_date_ist,
                         topic_embedding = NULL
-                """, topic, file_id, current_ist_date)
+                """, versioned_topic, file_id, current_ist_date)
             else:
                 await conn.execute("""
                     INSERT INTO digests_cache (topic, file_id, generated_date_ist)
@@ -225,7 +230,7 @@ async def set_cached_file_id_exact(topic: str, file_id: str):
                     ON CONFLICT (topic) DO UPDATE 
                     SET file_id = EXCLUDED.file_id,
                         generated_date_ist = EXCLUDED.generated_date_ist
-                """, topic, file_id, current_ist_date)
+                """, versioned_topic, file_id, current_ist_date)
     except Exception as e:
         logger.error(f"Error writing exact cache: {e}")
 
@@ -249,11 +254,12 @@ async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> st
                 SELECT file_id, 1 - (topic_embedding <=> $1::vector) as similarity
                 FROM digests_cache
                 WHERE generated_date_ist::DATE = $2::DATE
+                  AND topic LIKE $4
                   AND topic_embedding IS NOT NULL
                   AND 1 - (topic_embedding <=> $1::vector) >= $3
                 ORDER BY similarity DESC
                 LIMIT 1
-            """, vec_str, current_ist_date, threshold)
+            """, vec_str, current_ist_date, threshold, f"{CACHE_VERSION}:%")
             
             if row:
                 logger.info(f"Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
@@ -277,6 +283,7 @@ async def set_cached_file_id_semantic(topic: str, file_id: str):
         
     current_ist_date = get_current_ist_date()
     vec_str = str(embedding)
+    versioned_topic = f"{CACHE_VERSION}:{topic}"
     try:
         async with pool.acquire() as conn:
             await conn.execute("""
@@ -286,6 +293,6 @@ async def set_cached_file_id_semantic(topic: str, file_id: str):
                 SET file_id = EXCLUDED.file_id,
                     generated_date_ist = EXCLUDED.generated_date_ist,
                     topic_embedding = EXCLUDED.topic_embedding
-            """, topic, file_id, current_ist_date, vec_str)
+            """, versioned_topic, file_id, current_ist_date, vec_str)
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")

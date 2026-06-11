@@ -179,7 +179,12 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
     for idx, story in enumerate(stories):
         pdf.set_xy(12, y_ptr)
         
+        # Purple indicator stripe
+        pdf.set_fill_color(*BRAND_ACCENT)
+        pdf.rect(12, y_ptr + 0.5, 1.5, 5, 'F')
+        
         # Indicator
+        pdf.set_xy(16, y_ptr)
         pdf.set_font("Montserrat", "B", 12)
         pdf.set_text_color(*BRAND_ACCENT)
         cat_text = f"{str(idx + 1).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
@@ -215,8 +220,13 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_fill_color(*WHITE)
     pdf.rect(0, 0, 210, 297, 'F')
     
+    # Purple indicator stripe
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.rect(12, 20.5, 1.5, 5, 'F')
+    
     # Category Indicator
     pdf.set_y(20)
+    pdf.set_x(16)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*BRAND_ACCENT)
     cat_text = f"{str(index).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
@@ -351,12 +361,16 @@ def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
         pdf.set_line_width(0.5)
         pdf.line(x_pos, y_ptr, x_pos + col_w, y_ptr)
         
+        # Purple indicator stripe
+        pdf.set_fill_color(*BRAND_ACCENT)
+        pdf.rect(x_pos, y_ptr + 4.5, 1.5, 4, 'F')
+        
         # Content
-        pdf.set_xy(x_pos, y_ptr + 4)
+        pdf.set_xy(x_pos + 4, y_ptr + 4)
         pdf.set_font("Montserrat", "B", 9)
         pdf.set_text_color(*BRAND_ACCENT)
         cat_text = f"{str(idx + 1).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
-        pdf.cell(col_w, 5, cat_text, ln=1)
+        pdf.cell(col_w - 4, 5, cat_text, ln=1)
         
         pdf.set_xy(x_pos, y_ptr + 10)
         pdf.set_font("Montserrat", "B", 12)
