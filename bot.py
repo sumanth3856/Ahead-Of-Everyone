@@ -71,6 +71,37 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
+async def update_loading_message(message, topic=None) -> None:
+    """Periodically update the loading message to keep the user engaged."""
+    stages = [
+        "📡 Connecting to global tech intelligence arrays...",
+        "🔍 Scanning world news feeds & filtering key signals...",
+        "🧠 NLP analysis & deduplication engines running...",
+        "⚡ Running AI model pipelines for structured synthesis...",
+        "🎨 Designing & rendering premium PDF magazine layout...",
+        "📦 Compiling assets & generating delivery payload...",
+        "🚀 Finalizing package transmission..."
+    ]
+    idx = 0
+    topic_str = f" for *{topic}*" if topic else ""
+    while True:
+        try:
+            await asyncio.sleep(8)
+            stage = stages[idx % len(stages)]
+            text = (
+                f"⚙️ *AHEAD OF EVERYONE* | Generation Protocol\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{stage}\n\n"
+                f"⏳ Preparing your custom tech digest{topic_str}. This process usually takes 1-2 minutes. Please standby."
+            )
+            await message.edit_text(text=text, parse_mode="Markdown")
+            idx += 1
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            # Avoid crashing if Telegram rate-limits or if the message is deleted
+            pass
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle inline keyboard button clicks."""
     query = update.callback_query
@@ -80,10 +111,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     action = query.data
     
     if action == "latest":
-        await query.edit_message_text(text="⏳ Generating the latest digest... Please wait, this might take a few minutes.")
+        loading_msg = await query.edit_message_text(text="⏳ Initializing Ahead of Everyone intelligence protocols... Please standby.")
         
-        # Run the synchronous digest generation in a thread
-        pdf_filename = await asyncio.to_thread(generate_latest_digest, 5)
+        # Start dynamic progress updates in the background
+        ticker_task = asyncio.create_task(update_loading_message(loading_msg))
+        
+        try:
+            # Run the synchronous digest generation in a thread
+            pdf_filename = await asyncio.to_thread(generate_latest_digest, 5)
+        finally:
+            # Cancel the progress ticker
+            ticker_task.cancel()
+            try:
+                await ticker_task
+            except asyncio.CancelledError:
+                pass
+            # Delete the temporary loading message
+            try:
+                await loading_msg.delete()
+            except Exception as e:
+                logger.error(f"Failed to delete temporary loading message: {e}")
         
         if pdf_filename and os.path.exists(pdf_filename):
             try:
@@ -91,14 +138,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
                 with open(pdf_filename, "rb") as file:
                     await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
-                await query.message.reply_text("✅ Delivered!")
+                await context.bot.send_message(chat_id=chat_id, text="✅ Digest delivered successfully!")
             finally:
                 try:
                     os.remove(pdf_filename)
                 except Exception as e:
                     logger.error(f"Failed to delete {pdf_filename}: {e}")
         else:
-            await query.message.reply_text("❌ Failed to generate the digest. Please try again later.")
+            await context.bot.send_message(chat_id=chat_id, text="❌ Failed to generate the digest. Please try again later.")
             
     elif action == "subscribe":
         added = await database.add_subscriber(chat_id)
@@ -133,9 +180,25 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("Please provide a topic. Example: `/news cybersecurity`", parse_mode="Markdown")
         return
         
-    await update.message.reply_text(f"⏳ Executing deepdive protocol for: *{query}*. Searching across global feeds...", parse_mode="Markdown")
+    loading_msg = await update.message.reply_text(f"⏳ Initializing Ahead of Everyone intelligence protocols... Please standby.", parse_mode="Markdown")
     
-    pdf_filename = await asyncio.to_thread(generate_targeted_digest, query, 5)
+    # Start dynamic progress updates in the background
+    ticker_task = asyncio.create_task(update_loading_message(loading_msg, topic=query))
+    
+    try:
+        pdf_filename = await asyncio.to_thread(generate_targeted_digest, query, 5)
+    finally:
+        # Cancel the progress ticker
+        ticker_task.cancel()
+        try:
+            await ticker_task
+        except asyncio.CancelledError:
+            pass
+        # Delete the temporary loading message
+        try:
+            await loading_msg.delete()
+        except Exception as e:
+            logger.error(f"Failed to delete temporary loading message: {e}")
     
     if pdf_filename and os.path.exists(pdf_filename):
         try:
@@ -149,7 +212,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             except Exception as e:
                 logger.error(f"Failed to delete {pdf_filename}: {e}")
     else:
-        await update.message.reply_text(f"❌ Failed to find enough news or generate the digest for *{query}*.")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to find enough news or generate the digest for *{query}*.")
 
 @admin_only
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

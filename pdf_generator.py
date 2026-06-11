@@ -165,9 +165,9 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     # Brief
     pdf.set_y(pdf.get_y() + 10)
     pdf.set_x(22)
-    pdf.set_font("Montserrat", "", 11)
+    pdf.set_font("Montserrat", "B", 16)
     pdf.set_text_color(*LIGHT_GREY)
-    pdf.multi_cell(166, 6, top_story.get("the_brief", ""), align="L")
+    pdf.multi_cell(166, 8, top_story.get("the_brief", ""), align="L")
     
     # Removed curated text from bottom
 
@@ -272,9 +272,9 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.cell(w, 8, text, align="C", ln=1, fill=True)
     
     pdf.set_y(pdf.get_y() + 4)
-    pdf.set_font("Montserrat", "", 11)
+    pdf.set_font("Montserrat", "B", 16)
     pdf.set_text_color(*TEXT_DARK)
-    pdf.multi_cell(0, 6, story.get("the_brief", ""), align="L")
+    pdf.multi_cell(0, 8, story.get("the_brief", ""), align="L")
     
     pdf.set_y(pdf.get_y() + 15)
     
@@ -303,15 +303,15 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         if topic:
             pdf.cell(pdf.get_string_width(topic + ": "), 6, topic + ": ", ln=0)
             
-        pdf.set_font("Montserrat", "", 10)
+        pdf.set_font("Montserrat", "B", 15)
         pdf.set_text_color(*TEXT_DARK)
         
         # We can just rely on the right margin instead of calculating width minus topic_w manually
         # Wait, if we use multi_cell(0) with a topic printed first on the line, the multi_cell drops to the next line.
         # We have to keep calculating the exact width for multi_cell so it stays on the same line.
         topic_w = pdf.get_string_width(topic + ": ") if topic else 0
-        pdf.multi_cell(170 - topic_w, 6, bullet.get("description", bullet.get("text", "")), align="L")
-        pdf.ln(3)
+        pdf.multi_cell(186 - topic_w, 8, bullet.get("description", bullet.get("text", "")), align="L")
+        pdf.ln(4)
         
     if pdf.get_y() > 220:
         pdf.add_page()
@@ -337,9 +337,9 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
     pdf.set_xy(18, wy + 14)
-    pdf.set_font("Montserrat", "B", 11)
+    pdf.set_font("Montserrat", "B", 16)
     pdf.set_text_color(*BLACK)
-    pdf.multi_cell(174, 6, story.get("the_edge", ""), align="L")
+    pdf.multi_cell(174, 8, story.get("the_edge", ""), align="L")
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
     pdf.suppress_header = False
