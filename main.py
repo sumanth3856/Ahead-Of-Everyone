@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 # Initialize config/logging
 import config
-from scraper import fetch_dynamic_news
+from scraper import fetch_dynamic_news, register_sent_stories
 from pdf_generator import generate_digest_pdf
 from telegram_client import send_pdf_to_telegram
 
@@ -17,7 +17,7 @@ def main() -> None:
     
     # 1. Fetch data concurrently
     # We let the scraper decide the limit (default 20) so we don't crash the free API
-    stories = fetch_dynamic_news(25)
+    stories = fetch_dynamic_news(7)
     
     # 2. Generate PDF
     pdf_filename = generate_digest_pdf(stories)
@@ -31,7 +31,9 @@ def main() -> None:
     CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "6038057345")
     
     success = send_pdf_to_telegram(pdf_filename, BOT_TOKEN, CHAT_ID)
-    if not success:
+    if success:
+        register_sent_stories(stories)
+    else:
         logger.error("Delivery failed. Check logs.")
 
 if __name__ == "__main__":

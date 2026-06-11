@@ -74,7 +74,7 @@ def draw_neon_highlight(pdf, text, font_size, x, y):
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.rect(x - 2, y - height + 2, width, height + 4, 'F')
     
-def draw_cover_page(pdf: CustomPDF, top_story: dict):
+def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.add_page()
     pdf.set_fill_color(*BLACK)
     pdf.rect(0, 0, 210, 297, 'F')
@@ -159,7 +159,10 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
     
     pdf.set_y(pdf.get_y() + 5)
     pdf.set_x(20)
-    pdf.multi_cell(160, 6, "It has been a long 24 hours. Here is the rundown.")
+    if custom_topic:
+        pdf.multi_cell(160, 6, f"An exclusive on-demand deepdive into: {custom_topic.title()}")
+    else:
+        pdf.multi_cell(160, 6, "It has been a long 24 hours. Here is the rundown.")
     
     # Footer
     pdf.set_y(-35)
@@ -182,7 +185,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict):
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 5, "Sumanth", ln=1, align="R")
 
-def draw_toc_page(pdf: CustomPDF, stories: list):
+def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
     pdf.add_page()
     pdf.set_y(30)
     
@@ -196,12 +199,18 @@ def draw_toc_page(pdf: CustomPDF, stories: list):
     pdf.set_y(45)
     pdf.set_font("Montserrat", "B", 32)
     pdf.set_text_color(*BLACK)
-    pdf.cell(0, 10, "Today's Agenda.", ln=1)
+    if custom_topic:
+        pdf.cell(0, 10, f"{custom_topic.title()} Briefing.", ln=1)
+    else:
+        pdf.cell(0, 10, "Today's Agenda.", ln=1)
     
     pdf.set_y(60)
     pdf.set_font("Montserrat", "", 11)
     pdf.set_text_color(80, 80, 80)
-    pdf.multi_cell(170, 6, f"{len(stories)} stories from the last 24 hours. Read in this order and you will be ahead of 90% of people by lunch.")
+    if custom_topic:
+        pdf.multi_cell(170, 6, f"{len(stories)} curated stories on {custom_topic}. Read in this order to stay ahead.")
+    else:
+        pdf.multi_cell(170, 6, f"{len(stories)} stories from the last 24 hours. Read in this order and you will be ahead of 90% of people by lunch.")
     
     pdf.set_y(80)
     
@@ -388,7 +397,7 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 10, "Curated by Sumanth", align="C", ln=1)
 
-def generate_digest_pdf(stories: list) -> str:
+def generate_digest_pdf(stories: list, custom_topic: str = None) -> str:
     date_str = datetime.now().strftime("%d %B %Y")
     issue_num = "003"
     
@@ -397,14 +406,18 @@ def generate_digest_pdf(stories: list) -> str:
     if not stories:
         return ""
         
-    draw_cover_page(pdf, stories[0])
-    draw_toc_page(pdf, stories)
+    draw_cover_page(pdf, stories[0], custom_topic)
+    draw_toc_page(pdf, stories, custom_topic)
     
     for idx, story in enumerate(stories):
         draw_article_page(pdf, idx + 1, story)
         
     draw_conclusion_page(pdf)
         
-    file_name = f"AoE Tech News({datetime.now().strftime('%d-%m-%Y')}).pdf"
+    if custom_topic:
+        file_name = f"AoE_{custom_topic.replace(' ', '_')}_({datetime.now().strftime('%d-%m-%Y')}).pdf"
+    else:
+        file_name = f"AoE_Tech_News_({datetime.now().strftime('%d-%m-%Y')}).pdf"
+        
     pdf.output(file_name)
     return file_name
