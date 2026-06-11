@@ -137,7 +137,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_font("Montserrat", "B", 11) # +2
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
-    text = "01 // THE APEX"
+    text = "01 . THE APEX"
     w = pdf.get_string_width(text) + 12
     pdf.cell(w, 10, text, align="C", ln=1, fill=True)
     
@@ -207,7 +207,7 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
         pdf.set_font("Montserrat", "B", 10) # +2
         pdf.set_fill_color(*BRAND_ACCENT)
         pdf.set_text_color(*WHITE)
-        cat_text = f"{str(idx + 1).zfill(2)} // {clean_category(story.get('category', 'NEWS'))}"
+        cat_text = f"{str(idx + 1).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
         w = pdf.get_string_width(cat_text) + 6
         pdf.cell(w, 7, cat_text, align="C", ln=1, fill=True)
         
@@ -234,17 +234,13 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_fill_color(*WHITE)
     pdf.rect(0, 0, 210, 297, 'F')
     
-    # Abstract Layout Style
-    pdf.set_fill_color(*BRAND_ACCENT)
-    pdf.rect(170, 30, 20, 20, 'F')
-    pdf.set_fill_color(*WHITE)
-    pdf.rect(172, 32, 20, 20, 'F')
+
     
     pdf.set_y(35)
     pdf.set_font("Montserrat", "B", 11) # +2
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
-    cat_text = f"{str(index).zfill(2)} // {clean_category(story.get('category', 'NEWS'))}"
+    cat_text = f"{str(index).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
     w = pdf.get_string_width(cat_text) + 6
     pdf.cell(w, 8, cat_text, align="C", ln=1, fill=True)
     
@@ -293,7 +289,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         
         topic = bullet.get("topic", "")
         if topic:
-            pdf.cell(pdf.get_string_width(topic + " // "), 6, topic + " // ", ln=0)
+            pdf.cell(pdf.get_string_width(topic + ": "), 6, topic + ": ", ln=0)
             
         pdf.set_font("Montserrat", "", 10)
         pdf.set_text_color(*TEXT_DARK)
@@ -301,7 +297,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
         # We can just rely on the right margin instead of calculating width minus topic_w manually
         # Wait, if we use multi_cell(0) with a topic printed first on the line, the multi_cell drops to the next line.
         # We have to keep calculating the exact width for multi_cell so it stays on the same line.
-        topic_w = pdf.get_string_width(topic + " // ") if topic else 0
+        topic_w = pdf.get_string_width(topic + ": ") if topic else 0
         pdf.multi_cell(170 - topic_w, 6, bullet.get("description", bullet.get("text", "")), align="L")
         pdf.ln(3)
         

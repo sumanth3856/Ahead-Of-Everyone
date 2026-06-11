@@ -4,9 +4,21 @@ import logging
 from datetime import time, datetime
 import pytz
 from dotenv import load_dotenv
+from functools import wraps
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+
+def admin_only(func):
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = str(update.effective_user.id)
+        admin_id = os.getenv("ADMIN_ID", "6038057345")
+        if user_id != admin_id:
+            await update.message.reply_text("⛔ Unauthorized. Admin access only.")
+            return
+        return await func(update, context, *args, **kwargs)
+    return wrapper
 
 import database
 from main import generate_latest_digest, generate_targeted_digest
@@ -117,6 +129,25 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         await update.message.reply_text(f"❌ Failed to find enough news or generate the digest for *{query}*.")
 
+@admin_only
+async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /admin_stats command."""
+    subscribers = await database.get_all_subscribers()
+    stats_text = (
+        f"📊 *Admin Statistics*\n\n"
+        f"👥 Total Subscribers: {len(subscribers)}\n"
+        f"🕒 Server Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    await update.message.reply_text(stats_text, parse_mode="Markdown")
+
+@admin_only
+async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /admin_broadcast command."""
+    await update.message.reply_text("⏳ Forcing a global broadcast now. Please wait...")
+    # Run the scheduled broadcast immediately
+    await scheduled_broadcast(context)
+    await update.message.reply_text("✅ Global broadcast completed!")
+
 async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle all other text messages."""
     text = (
@@ -179,6 +210,8 @@ def build_bot() -> Application:
     
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("news", news_command))
+    app.add_handler(CommandHandler("admin_stats", admin_stats_command))
+    app.add_handler(CommandHandler("admin_broadcast", admin_broadcast_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general_message_handler))
     

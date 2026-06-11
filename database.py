@@ -1,9 +1,10 @@
 import aiosqlite
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "subscriptions.db"
+DB_PATH = os.getenv("DB_PATH", "subscriptions.db")
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:

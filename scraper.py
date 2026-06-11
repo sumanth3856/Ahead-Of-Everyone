@@ -244,8 +244,8 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
             "headline_highlight": highlight,
             "the_brief": brief,
             "core_breakdown": [
-                {"topic": "Context", "description": "AI summarization was temporarily rate-limited; showing raw RSS feed metadata."},
-                {"topic": "Update", "description": "Review the full article link for detailed developments."}
+                {"topic": "Context", "description": "Rapidly developing story. Full intelligence synthesis is currently compiling."},
+                {"topic": "Update", "description": "Please review the source link for raw, unfiltered developments."}
             ],
             "the_edge": "A critical industry update to watch as developments unfold."
         }
