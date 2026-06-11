@@ -7,6 +7,8 @@ from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import time
+import calendar
+import urllib.parse
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -22,7 +24,7 @@ def init_openai_client():
         logger.warning("OPENROUTER_API_KEY is not set. AI Summarization will fail.")
     return OpenAI(
         base_url=config.OPENROUTER_API_URL,
-        api_key=OPENROUTER_API_KEY,
+        api_key=OPENROUTER_API_KEY or "dummy_key_to_prevent_startup_crash",
         max_retries=0,
     )
 
@@ -94,7 +96,7 @@ def register_sent_stories(stories: List[Dict]) -> None:
     for story in stories:
         registry.append({
             "url": story.get("url", ""),
-            "title": story.get("headline", ""),
+            "title": story.get("original_title", story.get("headline", "")),
             "timestamp": now_str
         })
     registry = prune_registry(registry)
@@ -126,14 +128,41 @@ JSON Schema:
   "the_edge": "A punchy, single-sentence future-looking takeaway or hot take (maximum 100 characters)."
 }"""
 
-    FALLBACK_MODELS = [
-        config.OPENROUTER_MODEL,
+    primary_model = config.OPENROUTER_MODEL
+    backup_models = [
         "openrouter/free",
         "meta-llama/llama-3.1-8b-instruct:free",
-        "nvidia/nemotron-3-ultra-550b-a55b:free"
+        "google/gemma-2-9b-it:free",
+        "qwen/qwen-2.5-7b-instruct:free"
     ]
 
-    for model_id in FALLBACK_MODELS:
+    # 1. Primary Model Attempts (Initial + 1 Retry)
+    for attempt in range(2):
+        if attempt > 0:
+            logger.info(f"Retrying primary model {primary_model} (attempt {attempt + 1}/2) after 3s delay...")
+            time.sleep(3)
+        try:
+            response = client.chat.completions.create(
+                model=primary_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Title: {title}\nRaw Context: {raw_content}"}
+                ],
+                timeout=12,
+            )
+            content = response.choices[0].message.content.strip()
+            if content.startswith("```json"):
+                content = content[7:-3].strip()
+            elif content.startswith("```"):
+                content = content[3:-3].strip()
+            return json.loads(content)
+        except Exception as e:
+            logger.warning(f"Primary model attempt {attempt + 1} failed for '{title}': {e}")
+
+    # 2. Backup Model Attempts (with openrouter/free first)
+    for model_id in backup_models:
+        logger.info(f"Falling back to model {model_id} after 3s delay...")
+        time.sleep(3)
         try:
             response = client.chat.completions.create(
                 model=model_id,
@@ -144,17 +173,14 @@ JSON Schema:
                 timeout=12,
             )
             content = response.choices[0].message.content.strip()
-            # Clean potential markdown wrapping
             if content.startswith("```json"):
                 content = content[7:-3].strip()
             elif content.startswith("```"):
                 content = content[3:-3].strip()
-                
             return json.loads(content)
         except Exception as e:
-            logger.warning(f"Model {model_id} failed for '{title}': {e}. Attempting next model...")
-            continue
-            
+            logger.warning(f"Backup model {model_id} failed for '{title}': {e}")
+
     logger.error(f"All AI models exhausted for '{title}'.")
     return None
 
@@ -168,13 +194,13 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
     items = []
     try:
         parsed = feedparser.parse(feed_url)
-        cutoff_time = datetime.now() - timedelta(hours=lookback_hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         for entry in parsed.entries:
             published = None
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                published = datetime.fromtimestamp(time.mktime(entry.published_parsed))
+                published = datetime.fromtimestamp(calendar.timegm(entry.published_parsed), timezone.utc)
             elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-                published = datetime.fromtimestamp(time.mktime(entry.updated_parsed))
+                published = datetime.fromtimestamp(calendar.timegm(entry.updated_parsed), timezone.utc)
                 
             if published and published < cutoff_time:
                 continue
@@ -197,7 +223,8 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
             items.append({
                 "title": title,
                 "url": link,
-                "raw_text": text_snippet
+                "raw_text": text_snippet,
+                "published": published
             })
     except Exception as e:
         logger.error(f"Error fetching RSS {feed_url}: {e}")
@@ -251,11 +278,12 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
         }
         
     structured_data['url'] = item['url']
+    structured_data['original_title'] = item['title']
     return structured_data
 
 def fetch_dynamic_news(limit: int = 7) -> List[Dict]:
     """Scrapes multi-source RSS feeds, filters duplicates/rehashes, and uses AI to summarize 5-7 stories."""
-    logger.info("Fetching multi-source RSS feeds...")
+    logger.info("Fetching multi-source RSS feeds once with 72h lookback...")
     rss_feeds = [
         "https://techcrunch.com/feed/",
         "https://www.theverge.com/rss/index.xml",
@@ -267,21 +295,25 @@ def fetch_dynamic_news(limit: int = 7) -> List[Dict]:
     unique_candidates = []
     chosen_lookback = 24
     
-    # Try lookbacks of 24h, 48h, 72h to ensure at least 5 articles
+    # Fetch feeds ONCE with max lookback
+    all_raw_items_72h = []
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = executor.map(lambda url: fetch_rss_feed(url, 72), rss_feeds)
+        for res in results:
+            all_raw_items_72h.extend(res)
+    
+    # Try lookbacks of 24h, 48h, 72h locally
     for lookback in [24, 48, 72]:
         chosen_lookback = lookback
-        all_raw_items = []
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            # Pass lookback parameter using lambda to avoid issues
-            results = executor.map(lambda url: fetch_rss_feed(url, lookback), rss_feeds)
-            for res in results:
-                all_raw_items.extend(res)
-                
-        # Group raw items by feed URL to enable interleaving later
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback)
+        
         feed_grouped = {url: [] for url in rss_feeds}
         seen_titles = set()
         
-        for item in all_raw_items:
+        for item in all_raw_items_72h:
+            if item.get('published') and item['published'] < cutoff_time:
+                continue
+                
             if item['title'] in seen_titles:
                 continue
             if is_duplicate_or_rehash(item['title'], item['url'], registry):
@@ -309,14 +341,11 @@ def fetch_dynamic_news(limit: int = 7) -> List[Dict]:
         unique_candidates = interleaved
         logger.info(f"Lookback {lookback}h: found {len(unique_candidates)} non-sent unique candidates")
         
-        if len(unique_candidates) >= 5:
+        if len(unique_candidates) >= limit:
             break
             
-    logger.info(f"Final selected lookback: {chosen_lookback}h with {len(unique_candidates)} candidates")
-    
-    # Enforce story limits: strictly 5 stories
-    target_limit = 5
-    selected_items = unique_candidates[:target_limit]
+    # Enforce story limits: strictly up to limit
+    selected_items = unique_candidates[:limit]
     logger.info(f"Selected {len(selected_items)} stories for AI processing.")
     
     stories = []
@@ -332,8 +361,8 @@ def fetch_targeted_news(query: str, limit: int = 5) -> List[Dict]:
     """Scrapes Google News RSS for a specific topic, bypassing the anti-rehash registry."""
     logger.info(f"Fetching targeted news for query: {query}")
     
-    # URL encode query
-    encoded_query = query.replace(" ", "%20")
+    # URL encode query safely
+    encoded_query = urllib.parse.quote(query)
     rss_feed = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
     
     raw_items = fetch_rss_feed(rss_feed, lookback_hours=72)

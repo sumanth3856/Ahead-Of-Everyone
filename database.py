@@ -1,16 +1,19 @@
 import asyncpg
 import logging
 import os
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 _pool = None
+_pool_lock = asyncio.Lock()
 
 async def get_pool():
     global _pool
-    if _pool is None and DATABASE_URL:
-        _pool = await asyncpg.create_pool(DATABASE_URL)
+    async with _pool_lock:
+        if _pool is None and DATABASE_URL:
+            _pool = await asyncpg.create_pool(DATABASE_URL)
     return _pool
 
 async def init_db():
@@ -63,3 +66,10 @@ async def get_all_subscribers() -> list[int]:
     except Exception as e:
         logger.error(f"Error getting subscribers: {e}")
         return []
+
+async def close_db():
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
+        logger.info("Database connection pool closed.")

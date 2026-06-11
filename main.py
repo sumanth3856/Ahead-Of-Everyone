@@ -35,13 +35,21 @@ def main() -> None:
     if not pdf_filename:
         return
         
-    load_dotenv()
-    BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8658316403:AAH16J5AC2iGmdzM3LyoUS1-zSf4oavzTF4")
-    CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "6038057345")
-    
-    success = send_pdf_to_telegram(pdf_filename, BOT_TOKEN, CHAT_ID)
-    if not success:
-        logger.error("Delivery failed. Check logs.")
+    try:
+        load_dotenv()
+        BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8658316403:AAH16J5AC2iGmdzM3LyoUS1-zSf4oavzTF4")
+        CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "6038057345")
+        
+        success = send_pdf_to_telegram(pdf_filename, BOT_TOKEN, CHAT_ID)
+        if not success:
+            logger.error("Delivery failed. Check logs.")
+    finally:
+        if pdf_filename and os.path.exists(pdf_filename):
+            try:
+                os.remove(pdf_filename)
+                logger.info(f"Cleaned up manual run PDF: {pdf_filename}")
+            except Exception as e:
+                logger.error(f"Failed to delete {pdf_filename}: {e}")
 
 if __name__ == "__main__":
     main()

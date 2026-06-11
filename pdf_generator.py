@@ -37,6 +37,8 @@ class CustomPDF(FPDF):
         super().__init__(orientation="P", unit="mm", format="A4")
         self.date_str = date_str
         self.custom_topic = custom_topic
+        self.set_left_margin(12)
+        self.set_right_margin(12)
         self.set_auto_page_break(auto=True, margin=15)
         
         if not os.path.exists("assets"):
@@ -45,20 +47,31 @@ class CustomPDF(FPDF):
         try:
             self.add_font("Montserrat", "", "assets/Montserrat-Regular.ttf")
             self.add_font("Montserrat", "B", "assets/Montserrat-Bold.ttf")
+            self.use_fallback_fonts = False
         except Exception as e:
-            logger.error(f"Error loading fonts: {e}")
+            logger.error(f"Error loading fonts, falling back to built-in fonts: {e}")
+            self.use_fallback_fonts = True
+
+    def set_font(self, family, style="", size=0):
+        if getattr(self, 'use_fallback_fonts', False):
+            family = "helvetica"
+        try:
+            super().set_font(family, style, size)
+        except RuntimeError:
+            self.use_fallback_fonts = True
+            super().set_font("helvetica", style, size)
 
     def header(self):
-        if self.page_no() == 1 or getattr(self, 'suppress_header', False):
-            return
+        # Logo on left
+        if os.path.exists("assets/logo.png"):
+            self.image("assets/logo.png", 12, 15, w=25)
             
-        self.set_y(15)
         self.set_font("Montserrat", "B", 9)
         text = "AHEAD OF EVERYONE"
         w = self.get_string_width(text) + 6
         self.set_fill_color(*BRAND_ACCENT)
         self.set_text_color(*WHITE)
-        self.set_x(20)
+        self.set_x(12)
         self.cell(w, 6, text, ln=0, align="C", fill=True)
         
         self.set_font("Montserrat", "B", 8)
@@ -72,7 +85,7 @@ class CustomPDF(FPDF):
         self.cell(0, 4, meta_text, ln=1, align="R")
         
         self.set_draw_color(*BRAND_ACCENT)
-        self.line(20, 22, 190, 22)
+        self.line(12, 22, 198, 22)
         self.ln(10)
 
     def footer(self):
@@ -83,6 +96,7 @@ class CustomPDF(FPDF):
         self.set_font("Montserrat", "B", 8)
         self.set_text_color(*MID_GREY)
         footer_text = "Ahead of Everyone"
+        self.set_x(12)
         self.cell(100, 10, footer_text, ln=0, align="L")
         
         self.set_font("Montserrat", "B", 10)
@@ -97,20 +111,20 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     
     # Large Vertical Purple Accent
     pdf.set_fill_color(*BRAND_ACCENT)
-    pdf.rect(15, 0, 4, 297, 'F')
+    pdf.rect(6, 0, 4, 297, 'F')
     
     # Title
     pdf.set_y(40)
-    pdf.set_x(30)
+    pdf.set_x(12)
     pdf.set_font("Montserrat", "B", 42)
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 15, "AHEAD OF", ln=1)
-    pdf.set_x(30)
+    pdf.set_x(12)
     pdf.cell(0, 15, "EVERYONE", ln=1)
     
     # Date & Subtitle
     pdf.set_y(75)
-    pdf.set_x(30)
+    pdf.set_x(12)
     # Increased font size +2 for highlighted blocks
     pdf.set_font("Montserrat", "B", 14)
     pdf.set_fill_color(*BRAND_ACCENT)
@@ -119,7 +133,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     w = pdf.get_string_width(date_text) + 8
     pdf.cell(w, 10, date_text, ln=1, align="C", fill=True)
     
-    pdf.set_x(30)
+    pdf.set_x(12)
     pdf.set_font("Montserrat", "", 10)
     pdf.set_text_color(*LIGHT_GREY)
     if custom_topic:
@@ -130,10 +144,10 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     # Featured Block Outline
     pdf.set_y(120)
     pdf.set_draw_color(*MID_GREY)
-    pdf.rect(30, 120, 160, 100, 'D')
+    pdf.rect(12, 120, 186, 100, 'D')
     
     # Featured Tag
-    pdf.set_xy(30, 115)
+    pdf.set_xy(12, 115)
     pdf.set_font("Montserrat", "B", 11) # +2
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
@@ -143,17 +157,17 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     
     # Featured Headline
     pdf.set_y(135)
-    pdf.set_x(40)
+    pdf.set_x(22)
     pdf.set_font("Montserrat", "B", 22)
     pdf.set_text_color(*WHITE)
-    pdf.multi_cell(140, 9, top_story.get("headline", "Featured News"), align="L")
+    pdf.multi_cell(166, 9, top_story.get("headline", "Featured News"), align="L")
     
     # Brief
     pdf.set_y(pdf.get_y() + 10)
-    pdf.set_x(40)
+    pdf.set_x(22)
     pdf.set_font("Montserrat", "", 11)
     pdf.set_text_color(*LIGHT_GREY)
-    pdf.multi_cell(140, 6, top_story.get("the_brief", ""), align="L")
+    pdf.multi_cell(166, 6, top_story.get("the_brief", ""), align="L")
     
     # Removed curated text from bottom
 
@@ -192,7 +206,7 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
             y_ptr = 40
             
         is_left = (idx % 2 == 0)
-        x_pos = 20 if is_left else 80
+        x_pos = 12 if is_left else 88
         
         # Draw Card
         pdf.set_fill_color(*CARD_BG_LIGHT)
@@ -228,8 +242,6 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
         y_ptr += card_h + 5
 
 def draw_article_page(pdf: CustomPDF, index: int, story: dict):
-    pdf.set_left_margin(20)
-    pdf.set_right_margin(20)
     pdf.add_page()
     pdf.set_fill_color(*WHITE)
     pdf.rect(0, 0, 210, 297, 'F')
@@ -312,11 +324,11 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     # THE EDGE Solid Block
     wy = pdf.get_y()
     pdf.set_fill_color(*CARD_BG_LIGHT)
-    pdf.rect(20, wy, 170, 30, 'F')
+    pdf.rect(12, wy, 186, 30, 'F')
     pdf.set_fill_color(*BRAND_ACCENT)
-    pdf.rect(20, wy, 2, 30, 'F')
+    pdf.rect(12, wy, 2, 30, 'F')
     
-    pdf.set_xy(26, wy + 5)
+    pdf.set_xy(18, wy + 5)
     pdf.set_font("Montserrat", "B", 10) # +2
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
@@ -324,10 +336,10 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     w = pdf.get_string_width(text) + 6
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
-    pdf.set_xy(26, wy + 14)
+    pdf.set_xy(18, wy + 14)
     pdf.set_font("Montserrat", "B", 11)
     pdf.set_text_color(*BLACK)
-    pdf.multi_cell(158, 6, story.get("the_edge", ""), align="L")
+    pdf.multi_cell(174, 6, story.get("the_edge", ""), align="L")
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
     pdf.suppress_header = False
@@ -361,7 +373,7 @@ def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
         col = idx % 2
         row = idx // 2
         
-        x_pos = 15 if col == 0 else 110
+        x_pos = 12 if col == 0 else 113
         y_ptr = start_y + (row * (card_h + 10))
         
         # Draw Card
@@ -396,8 +408,6 @@ def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
 
 def draw_conclusion_page(pdf: CustomPDF):
     pdf.suppress_header = True
-    pdf.set_left_margin(15)
-    pdf.set_right_margin(15)
     pdf.add_page()
     pdf.suppress_footer = True
     pdf.set_fill_color(*BLACK)
@@ -421,12 +431,12 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.set_y(270)
     
     # Left text: Sent everyday...
-    pdf.set_x(15)
+    pdf.set_x(12)
     pdf.set_font("Montserrat", "B", 8)
     pdf.set_text_color(*LIGHT_GREY)
     pdf.cell(0, 5, "Sent everyday at 10 AM IST", ln=1)
     
-    pdf.set_x(15)
+    pdf.set_x(12)
     pdf.set_font("Montserrat", "B", 8)
     w_prefix = pdf.get_string_width("by Sumanth, under ")
     pdf.cell(w_prefix, 6, "by Sumanth, under ", ln=0)
@@ -454,7 +464,7 @@ def generate_digest_pdf(stories: list, custom_topic: str = None) -> str:
         logger.error("No stories provided for PDF generation.")
         return ""
         
-    stories = stories[:5]
+
         
     sanitized_stories = []
     for story in stories:

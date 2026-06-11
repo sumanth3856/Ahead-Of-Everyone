@@ -9,6 +9,7 @@ from aiohttp import web
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
+from telegram.error import Forbidden, BadRequest
 
 def admin_only(func):
     @wraps(func)
@@ -77,11 +78,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         pdf_filename = await asyncio.to_thread(generate_latest_digest, 5)
         
         if pdf_filename and os.path.exists(pdf_filename):
-            caption = f"📰 *{BRAND_NAME}* | Here is the latest digest!\n\nInnovating the future, today."
-            pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
-            with open(pdf_filename, "rb") as file:
-                await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
-            await query.message.reply_text("✅ Delivered!")
+            try:
+                caption = f"📰 *{BRAND_NAME}* | Here is the latest digest!\n\nInnovating the future, today."
+                pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
+                with open(pdf_filename, "rb") as file:
+                    await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
+                await query.message.reply_text("✅ Delivered!")
+            finally:
+                try:
+                    os.remove(pdf_filename)
+                except Exception as e:
+                    logger.error(f"Failed to delete {pdf_filename}: {e}")
         else:
             await query.message.reply_text("❌ Failed to generate the digest. Please try again later.")
             
@@ -123,10 +130,16 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     pdf_filename = await asyncio.to_thread(generate_targeted_digest, query, 5)
     
     if pdf_filename and os.path.exists(pdf_filename):
-        caption = f"✅ Deepdive complete. Delivering payload for *{query}*..."
-        pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
-        with open(pdf_filename, "rb") as file:
-            await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
+        try:
+            caption = f"✅ Deepdive complete. Delivering payload for *{query}*..."
+            pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
+            with open(pdf_filename, "rb") as file:
+                await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
+        finally:
+            try:
+                os.remove(pdf_filename)
+            except Exception as e:
+                logger.error(f"Failed to delete {pdf_filename}: {e}")
     else:
         await update.message.reply_text(f"❌ Failed to find enough news or generate the digest for *{query}*.")
 
@@ -160,15 +173,25 @@ async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_
 async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Scheduled job to generate the daily digest and send it to all subscribers."""
     logger.info("Starting scheduled daily broadcast...")
+    
+    subscribers = await database.get_all_subscribers()
+    if not subscribers:
+        admin_id = os.getenv("ADMIN_ID", "6038057345")
+        if admin_id:
+            try:
+                subscribers = [int(admin_id)]
+                logger.info(f"No subscribers in DB. Defaulting to admin ID {admin_id} for performance check.")
+            except ValueError:
+                pass
+                
+    if not subscribers:
+        logger.info("No subscribers found for broadcast. Skipping execution.")
+        return
+        
     pdf_filename = await asyncio.to_thread(generate_latest_digest, 5)  # Cap at 5 for the single page layout
     
     if not pdf_filename or not os.path.exists(pdf_filename):
         logger.error("Broadcast failed: Could not generate digest.")
-        return
-        
-    subscribers = await database.get_all_subscribers()
-    if not subscribers:
-        logger.info("No subscribers found for broadcast.")
         return
         
     caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today."
@@ -186,10 +209,24 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE) -> None:
                     if msg and msg.document:
                         file_id = msg.document.file_id
             success_count += 1
+        except Forbidden:
+            logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
+            await database.remove_subscriber(chat_id)
+        except BadRequest as e:
+            if "chat not found" in str(e).lower():
+                logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
+                await database.remove_subscriber(chat_id)
+            else:
+                logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
         except Exception as e:
             logger.error(f"Failed to send to {chat_id}: {e}")
             
     logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
+    
+    try:
+        os.remove(pdf_filename)
+    except Exception as e:
+        logger.error(f"Failed to clean up broadcast PDF {pdf_filename}: {e}")
 
 async def ping_handler(request):
     return web.Response(text="OK")
@@ -205,11 +242,20 @@ async def start_web_server():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     logger.info(f"Dummy web server started on port {port}")
+    return runner
 
 async def post_init(app: Application) -> None:
     """Initialize the database during bot startup."""
     await database.init_db()
-    await start_web_server()
+    app.bot_data['web_runner'] = await start_web_server()
+
+async def post_stop(app: Application) -> None:
+    """Gracefully close external resources."""
+    runner = app.bot_data.get('web_runner')
+    if runner:
+        await runner.cleanup()
+        logger.info("Web server cleanly terminated.")
+    await database.close_db()
 
 def build_bot() -> Application:
     """Build the bot application."""
@@ -222,6 +268,7 @@ def build_bot() -> Application:
         .token(BOT_TOKEN)
         .application_class(SubApplication)
         .post_init(post_init)
+        .post_stop(post_stop)
         .build()
     )
     
