@@ -19,10 +19,30 @@ async def get_pool():
         if _pool is None and DATABASE_URL:
             try:
                 parsed = urllib.parse.urlparse(DATABASE_URL)
-                logger.info(f"Connecting to database host: '{parsed.hostname}' (port: {parsed.port}, database: '{parsed.path.lstrip('/')}')")
-            except Exception as pe:
-                logger.error(f"Failed to parse DATABASE_URL: {pe}")
-            _pool = await asyncpg.create_pool(DATABASE_URL)
+                # Parse query parameters for sslmode
+                query_params = urllib.parse.parse_qs(parsed.query)
+                ssl_mode = query_params.get('sslmode', ['prefer'])[0]
+                
+                # Safely decode username and password
+                user = urllib.parse.unquote(parsed.username) if parsed.username else None
+                password = urllib.parse.unquote(parsed.password) if parsed.password else None
+                host = parsed.hostname
+                port = parsed.port or 5432
+                database_name = parsed.path.lstrip('/')
+                
+                logger.info(f"Connecting to database host: '{host}' (port: {port}, database: '{database_name}')")
+                
+                _pool = await asyncpg.create_pool(
+                    host=host,
+                    port=port,
+                    user=user,
+                    password=password,
+                    database=database_name,
+                    ssl=ssl_mode if ssl_mode != 'disable' else None
+                )
+            except Exception as e:
+                logger.error(f"Failed to connect with parsed params: {e}. Falling back to raw DSN.")
+                _pool = await asyncpg.create_pool(DATABASE_URL)
     return _pool
 
 async def init_db():
