@@ -3,6 +3,7 @@ import json
 import logging
 import feedparser
 import re
+import requests
 from typing import List, Dict, Optional
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -103,15 +104,21 @@ def register_sent_stories(stories: List[Dict]) -> None:
     save_sent_registry(registry)
     logger.info(f"Registered {len(stories)} articles in registry and pruned old entries.")
 
-def ai_summarize(title: str, raw_content: str) -> Optional[Dict]:
-    """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout."""
-    system_prompt = """You are an elite tech journalist for 'Ahead of Everyone'.
+def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
+    """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout.
+    
+    Args:
+        title: The article title.
+        raw_content: The raw text snippet.
+        metadata: Optional dict with keys like 'source', 'upvotes', 'comments', 'sector'.
+    """
+    system_prompt = """You are an elite journalist for 'Ahead of Everyone', covering Technology, Science, Medicine, Agriculture, Climate, and global affairs.
 Your task is to take a raw news snippet and write a premium, highly structured editorial piece.
 You MUST output ONLY valid JSON. Do not include markdown formatting like ```json.
 
 JSON Schema:
 {
-  "category": "A 3-part tag (e.g., '01 . FEATURE . AI INNOVATION' or '05 . NEWS . POLICY')",
+  "category": "A 3-part tag using the SECTOR hint if provided (e.g., '01 . FEATURE . AI INNOVATION', '03 . SECTOR . MEDICAL & PHARMA', '04 . SECTOR . AGRICULTURE', '05 . SECTOR . CLIMATE & WEATHER')",
   "headline": "An eye-catching, scroll-stopping, and attention-grabbing headline that rephrases the original to hook the reader (avoid dry or boring titles)",
   "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline to highlight.",
   "the_brief": "A highly concise 1-2 sentence summary of the news (maximum 160 characters).",
@@ -127,6 +134,21 @@ JSON Schema:
   ],
   "the_edge": "A punchy, single-sentence future-looking takeaway or hot take (maximum 100 characters)."
 }"""
+
+    # Build user message with social context if available
+    user_msg = f"Title: {title}\nRaw Context: {raw_content}"
+    if metadata:
+        context_parts = []
+        if metadata.get('source'):
+            context_parts.append(f"Source: {metadata['source']}")
+        if metadata.get('upvotes'):
+            context_parts.append(f"Community Engagement: {metadata['upvotes']} upvotes")
+        if metadata.get('comments'):
+            context_parts.append(f"{metadata['comments']} comments")
+        if metadata.get('sector'):
+            context_parts.append(f"Sector Hint: {metadata['sector']}")
+        if context_parts:
+            user_msg += "\n\nSocial Context: " + ", ".join(context_parts)
 
     primary_model = config.OPENROUTER_MODEL
     backup_models = [
@@ -146,7 +168,7 @@ JSON Schema:
                 model=primary_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Title: {title}\nRaw Context: {raw_content}"}
+                    {"role": "user", "content": user_msg}
                 ],
                 timeout=12,
             )
@@ -168,7 +190,7 @@ JSON Schema:
                 model=model_id,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Title: {title}\nRaw Context: {raw_content}"}
+                    {"role": "user", "content": user_msg}
                 ],
                 timeout=12,
             )
@@ -234,7 +256,8 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
 
 def fetch_story_details(item: Dict) -> Optional[Dict]:
     logger.info(f"AI Processing: {item['title']}")
-    structured_data = ai_summarize(item['title'], item['raw_text'])
+    metadata = item.get('metadata', None)
+    structured_data = ai_summarize(item['title'], item['raw_text'], metadata=metadata)
     
     if not structured_data:
         logger.warning(f"Using fallback summary for '{item['title']}' due to AI failure.")
@@ -256,9 +279,18 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
         if not brief:
             brief = snippet[:157] + "..."
             
-        # Dynamically guess category based on title keywords or feed source
+        # Use sector from metadata if available, otherwise guess from title
+        sector = (metadata or {}).get('sector', '')
         lower_title = clean_headline.lower()
-        if "ai" in lower_title or "artificial intelligence" in lower_title or "model" in lower_title:
+        if sector == 'science':
+            category = "03 . SECTOR . SCIENCE"
+        elif sector == 'medical':
+            category = "04 . SECTOR . MEDICAL & PHARMA"
+        elif sector == 'agriculture':
+            category = "05 . SECTOR . AGRICULTURE"
+        elif sector == 'weather':
+            category = "05 . SECTOR . CLIMATE & WEATHER"
+        elif "ai" in lower_title or "artificial intelligence" in lower_title or "model" in lower_title:
             category = "02 . FEATURE . AI & RESEARCH"
         elif "cyber" in lower_title or "hack" in lower_title or "security" in lower_title or "vulnerability" in lower_title:
             category = "03 . ALERT . CYBERSECURITY"
@@ -283,80 +315,340 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
     structured_data['original_title'] = item['title']
     return structured_data
 
-def fetch_dynamic_news(limit: int = 7) -> List[Dict]:
-    """Scrapes multi-source RSS feeds, filters duplicates/rehashes, and uses AI to summarize 5-7 stories."""
-    logger.info("Fetching multi-source RSS feeds once with 72h lookback...")
-    rss_feeds = [
+# ─── Hacker News Firebase API ───────────────────────────────────────────────
+
+HN_USER_AGENT = "AoE-Bot/2.0 (Ahead of Everyone Daily Digest)"
+
+def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
+    """Fetches top stories from Hacker News using the official Firebase API.
+    Returns items in the same dict format as fetch_rss_feed for compatibility."""
+    logger.info(f"Fetching top {limit} stories from Hacker News API...")
+    items = []
+    try:
+        resp = requests.get(
+            "https://hacker-news.firebaseio.com/v0/topstories.json",
+            headers={"User-Agent": HN_USER_AGENT},
+            timeout=10
+        )
+        resp.raise_for_status()
+        story_ids = resp.json()[:limit * 2]  # fetch extra to filter duds
+    except Exception as e:
+        logger.error(f"Error fetching HN top story IDs: {e}")
+        return []
+
+    for sid in story_ids:
+        if len(items) >= limit:
+            break
+        try:
+            detail = requests.get(
+                f"https://hacker-news.firebaseio.com/v0/item/{sid}.json",
+                headers={"User-Agent": HN_USER_AGENT},
+                timeout=8
+            ).json()
+            if not detail or detail.get('type') != 'story' or not detail.get('url'):
+                continue
+
+            title = detail.get('title', '')
+            url = detail.get('url', '')
+            score = detail.get('score', 0)
+            comments = detail.get('descendants', 0)
+            text = detail.get('text', '') or ''
+            raw_text = strip_html(text) if text else title
+            if len(raw_text) < 50:
+                raw_text = f"{title}. This article has {score} upvotes and {comments} comments on Hacker News, indicating significant community interest."
+
+            ts = detail.get('time')
+            published = datetime.fromtimestamp(ts, timezone.utc) if ts else None
+
+            items.append({
+                "title": title,
+                "url": url,
+                "raw_text": raw_text[:1500],
+                "published": published,
+                "metadata": {
+                    "source": "Hacker News",
+                    "upvotes": score,
+                    "comments": comments,
+                    "sector": "tech"
+                }
+            })
+        except Exception as e:
+            logger.warning(f"Error fetching HN item {sid}: {e}")
+
+    logger.info(f"Fetched {len(items)} stories from Hacker News.")
+    return items
+
+# ─── Reddit JSON API ────────────────────────────────────────────────────────
+
+REDDIT_USER_AGENT = "AoE-Bot/2.0 by /u/AheadOfEveryone"
+
+def fetch_reddit_top_stories(subreddits: List[str] = None, limit: int = 10) -> List[Dict]:
+    """Fetches top daily posts from specified subreddits using the public JSON API.
+    No authentication required. Returns items in the standard dict format."""
+    if subreddits is None:
+        subreddits = ["technology"]
+    logger.info(f"Fetching top Reddit posts from: {subreddits}")
+    items = []
+    
+    for sub in subreddits:
+        try:
+            resp = requests.get(
+                f"https://www.reddit.com/r/{sub}/top.json?t=day&limit={limit}",
+                headers={"User-Agent": REDDIT_USER_AGENT},
+                timeout=10
+            )
+            if resp.status_code == 429:
+                logger.warning(f"Reddit rate-limited on r/{sub}. Skipping.")
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            
+            for child in data.get('data', {}).get('children', []):
+                post = child.get('data', {})
+                if post.get('is_self', False):  # skip text-only self posts
+                    continue
+                    
+                title = post.get('title', '')
+                url = post.get('url', '')
+                score = post.get('score', 0)
+                comments = post.get('num_comments', 0)
+                selftext = post.get('selftext', '')
+                
+                raw_text = selftext[:1500] if selftext else title
+                if len(raw_text) < 50:
+                    raw_text = f"{title}. This post has {score} upvotes and {comments} comments on Reddit r/{sub}."
+
+                created_utc = post.get('created_utc')
+                published = datetime.fromtimestamp(created_utc, timezone.utc) if created_utc else None
+
+                items.append({
+                    "title": title,
+                    "url": url,
+                    "raw_text": raw_text[:1500],
+                    "published": published,
+                    "metadata": {
+                        "source": f"Reddit r/{sub}",
+                        "upvotes": score,
+                        "comments": comments,
+                        "sector": "tech"
+                    }
+                })
+        except Exception as e:
+            logger.error(f"Error fetching Reddit r/{sub}: {e}")
+        time.sleep(1)  # brief pause between subreddits
+
+    # Sort by engagement score descending
+    items.sort(key=lambda x: x.get('metadata', {}).get('upvotes', 0), reverse=True)
+    logger.info(f"Fetched {len(items)} stories from Reddit.")
+    return items
+
+# ─── Category-Specific RSS Feeds ────────────────────────────────────────────
+
+CATEGORY_FEEDS = {
+    "science": [
+        "https://www.sciencedaily.com/rss/top/science.xml",
+        "https://phys.org/rss-feed/science-news/",
+    ],
+    "medical": [
+        "https://medicalxpress.com/rss-feed/",
+        "https://www.sciencedaily.com/rss/health_medicine.xml",
+    ],
+    "agriculture": [
+        "https://news.google.com/rss/search?q=agriculture+OR+farming+OR+crop&hl=en-US&gl=US&ceid=US:en",
+    ],
+    "weather": [
+        "https://news.google.com/rss/search?q=weather+OR+climate+change+OR+natural+disaster&hl=en-US&gl=US&ceid=US:en",
+    ],
+}
+
+def fetch_category_rss(category: str, limit: int = 5) -> List[Dict]:
+    """Fetches top stories for a specific essential sector using curated RSS feeds."""
+    feeds = CATEGORY_FEEDS.get(category, [])
+    if not feeds:
+        return []
+    
+    items = []
+    for feed_url in feeds:
+        fetched = fetch_rss_feed(feed_url, lookback_hours=48)
+        for item in fetched:
+            item['metadata'] = {
+                "source": f"RSS ({category})",
+                "sector": category
+            }
+        items.extend(fetched)
+    
+    # Deduplicate by title
+    seen = set()
+    unique = []
+    for item in items:
+        key = item['title'].lower().strip()
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    
+    return unique[:limit]
+
+# ─── Slot-Based Allocator ───────────────────────────────────────────────────
+
+def fetch_dynamic_news(limit: int = 5) -> List[Dict]:
+    """Omnichannel fetcher: pulls from RSS, Reddit, Hacker News, and sector feeds.
+    Uses a slot-based allocator to guarantee balanced coverage across sectors.
+    
+    Slot allocation (5 stories):
+      1. The Apex   – absolute top trending story (Reddit/HN by engagement)
+      2. Tech       – top tech story from RSS feeds
+      3. Science / Medical / Pharma
+      4. Agriculture / Weather / Climate
+      5. Best remaining from any pool
+    """
+    logger.info("=== Phase 2 Omnichannel Fetch Starting ===")
+    registry = load_sent_registry()
+    
+    # ── 1. Fetch all sources in parallel ─────────────────────────────────
+    tech_rss_feeds = [
         "https://techcrunch.com/feed/",
         "https://www.theverge.com/rss/index.xml",
         "https://www.wired.com/feed/rss",
-        "https://news.ycombinator.com/rss"
     ]
     
-    registry = load_sent_registry()
-    unique_candidates = []
-    chosen_lookback = 24
+    all_pools = {}  # category -> list of items
     
-    # Fetch feeds ONCE with max lookback
-    all_raw_items_72h = []
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        results = executor.map(lambda url: fetch_rss_feed(url, 72), rss_feeds)
-        for res in results:
-            all_raw_items_72h.extend(res)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        # Tech RSS
+        tech_future = executor.submit(
+            lambda: [item for url in tech_rss_feeds for item in fetch_rss_feed(url, 48)]
+        )
+        # Reddit
+        reddit_future = executor.submit(
+            lambda: fetch_reddit_top_stories(["technology", "science"], limit=8)
+        )
+        # Hacker News
+        hn_future = executor.submit(lambda: fetch_hn_top_stories(limit=8))
+        # Essential sectors
+        science_future = executor.submit(lambda: fetch_category_rss("science", 5))
+        medical_future = executor.submit(lambda: fetch_category_rss("medical", 5))
+        agri_future = executor.submit(lambda: fetch_category_rss("agriculture", 5))
+        weather_future = executor.submit(lambda: fetch_category_rss("weather", 5))
     
-    # Try lookbacks of 24h, 48h, 72h locally
-    for lookback in [24, 48, 72]:
-        chosen_lookback = lookback
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback)
-        
-        feed_grouped = {url: [] for url in rss_feeds}
-        seen_titles = set()
-        
-        for item in all_raw_items_72h:
-            if item.get('published') and item['published'] < cutoff_time:
-                continue
-                
-            if item['title'] in seen_titles:
-                continue
-            if is_duplicate_or_rehash(item['title'], item['url'], registry):
-                continue
-                
-            seen_titles.add(item['title'])
-            
-            # Map item back to its feed source
-            matched_feed = rss_feeds[0]
-            for url in rss_feeds:
-                domain = url.split("//")[-1].split("/")[0]
-                if domain in item['url']:
-                    matched_feed = url
-                    break
-            feed_grouped[matched_feed].append(item)
-            
-        # Interleave items from different feeds for source diversity
-        interleaved = []
-        max_len = max(len(feed_grouped[url]) for url in rss_feeds) if feed_grouped else 0
-        for i in range(max_len):
-            for url in rss_feeds:
-                if i < len(feed_grouped[url]):
-                    interleaved.append(feed_grouped[url][i])
-                    
-        unique_candidates = interleaved
-        logger.info(f"Lookback {lookback}h: found {len(unique_candidates)} non-sent unique candidates")
-        
-        if len(unique_candidates) >= limit:
-            break
-            
-    # Enforce story limits: strictly up to limit
-    selected_items = unique_candidates[:limit]
-    logger.info(f"Selected {len(selected_items)} stories for AI processing.")
+    # Collect results (with error handling)
+    try:
+        tech_rss_items = tech_future.result()
+        for item in tech_rss_items:
+            item.setdefault('metadata', {})['sector'] = 'tech'
+    except Exception as e:
+        logger.error(f"Tech RSS fetch failed: {e}")
+        tech_rss_items = []
     
+    try:
+        reddit_items = reddit_future.result()
+    except Exception as e:
+        logger.error(f"Reddit fetch failed: {e}")
+        reddit_items = []
+    
+    try:
+        hn_items = hn_future.result()
+    except Exception as e:
+        logger.error(f"HN fetch failed: {e}")
+        hn_items = []
+    
+    try:
+        science_items = science_future.result()
+    except Exception as e:
+        logger.error(f"Science RSS fetch failed: {e}")
+        science_items = []
+    
+    try:
+        medical_items = medical_future.result()
+    except Exception as e:
+        logger.error(f"Medical RSS fetch failed: {e}")
+        medical_items = []
+    
+    try:
+        agri_items = agri_future.result()
+    except Exception as e:
+        logger.error(f"Agriculture RSS fetch failed: {e}")
+        agri_items = []
+    
+    try:
+        weather_items = weather_future.result()
+    except Exception as e:
+        logger.error(f"Weather RSS fetch failed: {e}")
+        weather_items = []
+    
+    # ── 2. Global dedup against registry ─────────────────────────────────
+    def dedup(items: List[Dict]) -> List[Dict]:
+        clean = []
+        for item in items:
+            if not is_duplicate_or_rehash(item['title'], item.get('url', ''), registry):
+                clean.append(item)
+        return clean
+    
+    # Social / trending pool (Reddit + HN sorted by engagement)
+    social_pool = dedup(reddit_items + hn_items)
+    social_pool.sort(key=lambda x: x.get('metadata', {}).get('upvotes', 0), reverse=True)
+    
+    tech_pool = dedup(tech_rss_items)
+    science_medical_pool = dedup(science_items + medical_items)
+    agri_weather_pool = dedup(agri_items + weather_items)
+    
+    logger.info(f"Pool sizes after dedup — Social: {len(social_pool)}, Tech RSS: {len(tech_pool)}, "
+                f"Sci/Med: {len(science_medical_pool)}, Agri/Weather: {len(agri_weather_pool)}")
+    
+    # ── 3. Slot allocation ───────────────────────────────────────────────
+    selected_items = []
+    used_titles = set()
+    
+    def pick_from(pool: List[Dict]) -> Optional[Dict]:
+        for item in pool:
+            key = item['title'].lower().strip()
+            if key not in used_titles:
+                used_titles.add(key)
+                return item
+        return None
+    
+    # Slot 1: The Apex – highest-engagement social story
+    apex = pick_from(social_pool)
+    if apex:
+        selected_items.append(apex)
+    
+    # Slot 2: Tech – top tech RSS story
+    tech_pick = pick_from(tech_pool)
+    if tech_pick:
+        selected_items.append(tech_pick)
+    
+    # Slot 3: Science / Medical / Pharma
+    sci_med_pick = pick_from(science_medical_pool)
+    if sci_med_pick:
+        selected_items.append(sci_med_pick)
+    
+    # Slot 4: Agriculture / Weather / Climate
+    agri_weather_pick = pick_from(agri_weather_pool)
+    if agri_weather_pick:
+        selected_items.append(agri_weather_pick)
+    
+    # Slot 5: Best remaining from ANY pool (round-robin)
+    remaining_pools = [social_pool, tech_pool, science_medical_pool, agri_weather_pool]
+    while len(selected_items) < limit:
+        filled = False
+        for pool in remaining_pools:
+            pick = pick_from(pool)
+            if pick:
+                selected_items.append(pick)
+                filled = True
+                break
+        if not filled:
+            break  # all pools exhausted
+    
+    logger.info(f"Slot allocator selected {len(selected_items)} stories for AI processing.")
+    
+    # ── 4. AI Processing ─────────────────────────────────────────────────
     stories = []
     for item in selected_items:
         res = fetch_story_details(item)
         if res:
             stories.append(res)
-        time.sleep(4) # Prevent hitting free-tier rate limits
-        
+        time.sleep(4)  # respect free-tier rate limits
+    
     return stories
 
 def fetch_targeted_news(query: str, limit: int = 5) -> List[Dict]:
