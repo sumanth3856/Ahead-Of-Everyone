@@ -3,3 +3,5 @@
 __pycache__/
 *.pdf
 assets/
+*.db
+sent_articles.json

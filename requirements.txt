@@ -3,5 +3,6 @@ fpdf2
 python-dotenv
 feedparser
 openai
-python-telegram-bot>=20.0
+python-telegram-bot[job-queue]>=20.0
 nest_asyncio
+aiosqlite

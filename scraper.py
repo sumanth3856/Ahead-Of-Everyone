@@ -110,16 +110,21 @@ You MUST output ONLY valid JSON. Do not include markdown formatting like ```json
 JSON Schema:
 {
   "category": "A 3-part tag (e.g., '01 . FEATURE . AI INNOVATION' or '05 . NEWS . POLICY')",
-  "headline": "A massive, punchy headline",
-  "headline_highlight": "The most important word or short phrase from the headline to highlight.",
-  "the_brief": "A concise 2-3 sentence summary of the news.",
+  "headline": "An eye-catching, scroll-stopping, and attention-grabbing headline that rephrases the original to hook the reader (avoid dry or boring titles)",
+  "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline to highlight.",
+  "the_brief": "A highly concise 1-2 sentence summary of the news (maximum 160 characters).",
   "core_breakdown": [
-    {"topic": "The architecture", "text": "1.6T total params..."},
-    {"topic": "The pricing", "text": "Flash at $0.14 per million..."}
+    {
+      "topic": "1-2 word category/topic (e.g., 'Market impact' or 'Tech shift')",
+      "description": "A concise detail (maximum 90 characters)"
+    },
+    {
+      "topic": "1-2 word category/topic",
+      "description": "A concise detail (maximum 90 characters)"
+    }
   ],
-  "the_edge": "A punchy, single-sentence conclusion or hot take."
-}
-Limit core_breakdown to exactly 3 or 4 points."""
+  "the_edge": "A punchy, single-sentence future-looking takeaway or hot take (maximum 100 characters)."
+}"""
 
     FALLBACK_MODELS = [
         config.OPENROUTER_MODEL,
@@ -178,7 +183,9 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
             link = entry.get('link', '')
             
             raw_summary = entry.get('summary', '')
-            content = entry.get('content', [{'value': ''}])[0]['value'] if hasattr(entry, 'content') else ''
+            content = ""
+            if hasattr(entry, 'content') and entry.content:
+                content = entry.content[0].get('value', '')
             full_html = raw_summary + " " + content
             
             # Clean text using lightweight regex
@@ -202,16 +209,45 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
     
     if not structured_data:
         logger.warning(f"Using fallback summary for '{item['title']}' due to AI failure.")
+        
+        # Clean title by removing source suffix (e.g., " - TechCrunch")
+        clean_headline = re.sub(r'\s+[-|]\s+[^|-]+$', '', item['title']).strip()
+        highlight = clean_headline.split()[0] if clean_headline else "NEWS"
+        
+        # Clean and extract first 1-2 sentences of raw text up to 160 chars
+        snippet = item['raw_text'].strip()
+        sentences = re.split(r'(?<=[.!?])\s+', snippet)
+        brief = ""
+        for s in sentences:
+            if len(brief) + len(s) + 1 <= 160:
+                brief += (s + " ")
+            else:
+                break
+        brief = brief.strip()
+        if not brief:
+            brief = snippet[:157] + "..."
+            
+        # Dynamically guess category based on title keywords or feed source
+        lower_title = clean_headline.lower()
+        if "ai" in lower_title or "artificial intelligence" in lower_title or "model" in lower_title:
+            category = "02 . FEATURE . AI & RESEARCH"
+        elif "cyber" in lower_title or "hack" in lower_title or "security" in lower_title or "vulnerability" in lower_title:
+            category = "03 . ALERT . CYBERSECURITY"
+        elif "policy" in lower_title or "court" in lower_title or "ban" in lower_title or "regulation" in lower_title:
+            category = "04 . NEWS . REGULATION"
+        else:
+            category = "05 . NEWS . TECH POLICY"
+
         structured_data = {
-            "category": "TECH . NEWS",
-            "headline": item['title'],
-            "headline_highlight": item['title'].split()[0] if item['title'] else "NEWS",
-            "the_brief": item['raw_text'][:200] + "...",
+            "category": category,
+            "headline": clean_headline,
+            "headline_highlight": highlight,
+            "the_brief": brief,
             "core_breakdown": [
-                {"topic": "Overview", "description": "The AI summarizer hit a rate limit, so this is the raw text snippet."},
-                {"topic": "Source Text", "description": item['raw_text'][:150] + "..."}
+                {"topic": "Context", "description": "AI summarization was temporarily rate-limited; showing raw RSS feed metadata."},
+                {"topic": "Update", "description": "Review the full article link for detailed developments."}
             ],
-            "the_edge": "Read the full article online to stay ahead."
+            "the_edge": "A critical industry update to watch as developments unfold."
         }
         
     structured_data['url'] = item['url']
@@ -278,8 +314,8 @@ def fetch_dynamic_news(limit: int = 7) -> List[Dict]:
             
     logger.info(f"Final selected lookback: {chosen_lookback}h with {len(unique_candidates)} candidates")
     
-    # Enforce story limits: minimum 5, maximum 7
-    target_limit = max(5, min(limit, 7))
+    # Enforce story limits: strictly 5 stories
+    target_limit = 5
     selected_items = unique_candidates[:target_limit]
     logger.info(f"Selected {len(selected_items)} stories for AI processing.")
     

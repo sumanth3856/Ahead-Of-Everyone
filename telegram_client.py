@@ -1,3 +1,4 @@
+import os
 import requests
 import logging
 from datetime import datetime
@@ -10,8 +11,9 @@ def send_pdf_to_telegram(filename: str, bot_token: str, chat_id: str) -> bool:
     logger.info("Sending PDF to Telegram...")
     url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
     try:
+        pretty_filename = os.path.basename(filename).replace("_", " ")
         with open(filename, "rb") as file:
-            files = {"document": file}
+            files = {"document": (pretty_filename, file)}
             data = {
                 "chat_id": chat_id, 
                 "caption": f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today.",

@@ -1,6 +1,5 @@
 import logging
 import sys
-import os
 
 # Configure Logging for DevOps observability
 logging.basicConfig(
