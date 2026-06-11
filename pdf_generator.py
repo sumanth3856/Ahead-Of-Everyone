@@ -12,6 +12,9 @@ BRAND_ACCENT = (113, 27, 209)  # Deep Purple
 BLACK = (10, 10, 10)           # Pitch Black
 WHITE = (255, 255, 255)        # Crisp White
 
+# Pre-compiled category cleaning pattern
+CAT_CLEAN_RE = re.compile(r'^[\d\s\.]+')
+
 def sanitize_text(text: str) -> str:
     if not isinstance(text, str): return text
     replacements = {
@@ -25,7 +28,7 @@ def sanitize_text(text: str) -> str:
 
 def clean_category(raw_cat: str) -> str:
     """Removes leading numbers and dots from the AI category."""
-    return re.sub(r'^[\d\s\.]+', '', raw_cat).upper()
+    return CAT_CLEAN_RE.sub('', raw_cat).upper()
 
 class CustomPDF(FPDF):
     def __init__(self, date_str: str, custom_topic: str = None):

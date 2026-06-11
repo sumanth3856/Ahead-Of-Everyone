@@ -34,6 +34,14 @@ client = init_openai_client()
 REGISTRY_FILE = "sent_articles.json"
 REGISTRY_RETENTION_DAYS = 7
 
+# Pre-compiled regex patterns for high-performance string operations
+HTML_STRIP_RE = re.compile(r'<[^>]+>')
+WORD_TOKEN_RE = re.compile(r'\w+')
+HEADLINE_CLEAN_RE = re.compile(r'\s+[-|]\s+[^|-]+$')
+
+# Global requests session to enable HTTP Keep-Alive connection pooling
+_http_session = requests.Session()
+
 def load_sent_registry() -> List[Dict]:
     if os.path.exists(REGISTRY_FILE):
         try:
@@ -72,12 +80,12 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
     if any(item.get('title', '').lower().strip() == clean_title for item in registry):
         return True
         
-    words_new = set(re.findall(r'\w+', clean_title))
+    words_new = set(WORD_TOKEN_RE.findall(clean_title))
     if not words_new:
         return False
         
     for item in registry:
-        words_old = set(re.findall(r'\w+', item.get('title', '').lower().strip()))
+        words_old = set(WORD_TOKEN_RE.findall(item.get('title', '').lower().strip()))
         intersection = words_new.intersection(words_old)
         union = words_new.union(words_old)
         if union:
@@ -207,8 +215,8 @@ JSON Schema:
     return None
 
 def strip_html(html_str: str) -> str:
-    """Lightweight HTML stripper using regex."""
-    text = re.sub(r'<[^>]+>', ' ', html_str)
+    """Lightweight HTML stripper using pre-compiled regex."""
+    text = HTML_STRIP_RE.sub(' ', html_str)
     return " ".join(text.split())
 
 def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
@@ -263,7 +271,7 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
         logger.warning(f"Using fallback summary for '{item['title']}' due to AI failure.")
         
         # Clean title by removing source suffix (e.g., " - TechCrunch")
-        clean_headline = re.sub(r'\s+[-|]\s+[^|-]+$', '', item['title']).strip()
+        clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
         highlight = clean_headline.split()[0] if clean_headline else "NEWS"
         
         # Clean and extract first 1-2 sentences of raw text up to 160 chars
@@ -320,33 +328,32 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
 HN_USER_AGENT = "AoE-Bot/2.0 (Ahead of Everyone Daily Digest)"
 
 def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
-    """Fetches top stories from Hacker News using the official Firebase API.
+    """Fetches top stories from Hacker News concurrently.
     Returns items in the same dict format as fetch_rss_feed for compatibility."""
     logger.info(f"Fetching top {limit} stories from Hacker News API...")
-    items = []
     try:
-        resp = requests.get(
+        resp = _http_session.get(
             "https://hacker-news.firebaseio.com/v0/topstories.json",
             headers={"User-Agent": HN_USER_AGENT},
             timeout=10
         )
         resp.raise_for_status()
-        story_ids = resp.json()[:limit * 2]  # fetch extra to filter duds
+        story_ids = resp.json()[:limit * 3]  # fetch extra to filter empty/non-story links
     except Exception as e:
         logger.error(f"Error fetching HN top story IDs: {e}")
         return []
 
-    for sid in story_ids:
-        if len(items) >= limit:
-            break
+    items = []
+    
+    def fetch_single_story(sid):
         try:
-            detail = requests.get(
+            detail = _http_session.get(
                 f"https://hacker-news.firebaseio.com/v0/item/{sid}.json",
                 headers={"User-Agent": HN_USER_AGENT},
                 timeout=8
             ).json()
             if not detail or detail.get('type') != 'story' or not detail.get('url'):
-                continue
+                return None
 
             title = detail.get('title', '')
             url = detail.get('url', '')
@@ -360,7 +367,7 @@ def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
             ts = detail.get('time')
             published = datetime.fromtimestamp(ts, timezone.utc) if ts else None
 
-            items.append({
+            return {
                 "title": title,
                 "url": url,
                 "raw_text": raw_text[:1500],
@@ -371,9 +378,21 @@ def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
                     "comments": comments,
                     "sector": "tech"
                 }
-            })
+            }
         except Exception as e:
             logger.warning(f"Error fetching HN item {sid}: {e}")
+        return None
+
+    # Fetch Hacker News details concurrently
+    max_workers = min(len(story_ids), 12)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = executor.map(fetch_single_story, story_ids)
+        
+    for res in results:
+        if res:
+            items.append(res)
+            if len(items) >= limit:
+                break
 
     logger.info(f"Fetched {len(items)} stories from Hacker News.")
     return items
@@ -392,7 +411,7 @@ def fetch_reddit_top_stories(subreddits: List[str] = None, limit: int = 10) -> L
     
     for sub in subreddits:
         try:
-            resp = requests.get(
+            resp = _http_session.get(
                 f"https://www.reddit.com/r/{sub}/top.json?t=day&limit={limit}",
                 headers={"User-Agent": REDDIT_USER_AGENT},
                 timeout=10
@@ -510,8 +529,6 @@ def fetch_dynamic_news(limit: int = 5) -> List[Dict]:
         "https://www.theverge.com/rss/index.xml",
         "https://www.wired.com/feed/rss",
     ]
-    
-    all_pools = {}  # category -> list of items
     
     with ThreadPoolExecutor(max_workers=8) as executor:
         # Tech RSS

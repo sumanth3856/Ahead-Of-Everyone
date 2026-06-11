@@ -25,7 +25,7 @@ COPYRIGHT = "© 2026 Ahead of Everyone. All Rights Reserved."
 
 # OpenRouter / AI Settings
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "google/gemma-2-9b-it:free"
+OPENROUTER_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 # Color Palette (Luxury Slate & Neon Green)
 COLOR_DARK = (10, 15, 29)        

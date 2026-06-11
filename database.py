@@ -23,6 +23,16 @@ _pool_lock = asyncio.Lock()
 # Global flag to track if the pgvector/topic_embedding column is supported and available in the database
 HAS_VECTOR_COLUMN = True
 
+_session = None
+_session_lock = asyncio.Lock()
+
+async def get_http_session() -> aiohttp.ClientSession:
+    global _session
+    async with _session_lock:
+        if _session is None or _session.closed:
+            _session = aiohttp.ClientSession()
+        return _session
+
 async def get_pool():
     global _pool
     async with _pool_lock:
@@ -137,11 +147,15 @@ async def get_all_subscribers() -> list[int]:
         return []
 
 async def close_db():
-    global _pool
+    global _pool, _session
     if _pool:
         await _pool.close()
         _pool = None
         logger.info("Database connection pool closed.")
+    if _session and not _session.closed:
+        await _session.close()
+        _session = None
+        logger.info("HTTP client session closed.")
 
 def get_current_ist_date():
     ist = pytz.timezone('Asia/Kolkata')
@@ -155,18 +169,18 @@ async def get_embedding(text: str) -> list[float] | None:
         headers["Authorization"] = f"Bearer {hf_token}"
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=headers, json={"inputs": text}) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    # HF API can return a list of floats or a list of list of floats
-                    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                        return data[0]
-                    elif isinstance(data, list) and len(data) > 0:
-                        return data
-                else:
-                    text_resp = await response.text()
-                    logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
+        session = await get_http_session()
+        async with session.post(url, headers=headers, json={"inputs": text}) as response:
+            if response.status == 200:
+                data = await response.json()
+                # HF API can return a list of floats or a list of list of floats
+                if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                    return data[0]
+                elif isinstance(data, list) and len(data) > 0:
+                    return data
+            else:
+                text_resp = await response.text()
+                logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
     except Exception as e:
         logger.error(f"Error fetching embedding from HuggingFace: {e}")
     return None
