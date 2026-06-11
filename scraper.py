@@ -64,11 +64,11 @@ def prune_registry(registry: List[Dict]) -> List[Dict]:
     return pruned
 
 def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
-    if any(item['url'] == url for item in registry):
+    if any(item.get('url') == url for item in registry):
         return True
     
     clean_title = title.lower().strip()
-    if any(item['title'].lower().strip() == clean_title for item in registry):
+    if any(item.get('title', '').lower().strip() == clean_title for item in registry):
         return True
         
     words_new = set(re.findall(r'\w+', clean_title))
@@ -76,7 +76,7 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
         return False
         
     for item in registry:
-        words_old = set(re.findall(r'\w+', item['title'].lower().strip()))
+        words_old = set(re.findall(r'\w+', item.get('title', '').lower().strip()))
         intersection = words_new.intersection(words_old)
         union = words_new.union(words_old)
         if union:
@@ -86,7 +86,7 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
                 if any(kw in clean_title for kw in update_keywords):
                     logger.info(f"Allowing update/developing article: {title}")
                     return False
-                logger.info(f"Filtered out similar/duplicate article: '{title}' (matches '{item['title']}' with Jaccard {jaccard:.2f})")
+                logger.info(f"Filtered out similar/duplicate article: '{title}' (matches '{item.get('title', '')}' with Jaccard {jaccard:.2f})")
                 return True
     return False
 
@@ -193,7 +193,9 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
     logger.info(f"Fetching RSS feed: {feed_url} with {lookback_hours}h lookback")
     items = []
     try:
-        parsed = feedparser.parse(feed_url)
+        # Pass custom User-Agent to prevent 403 Forbidden errors
+        agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        parsed = feedparser.parse(feed_url, agent=agent)
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         for entry in parsed.entries:
             published = None

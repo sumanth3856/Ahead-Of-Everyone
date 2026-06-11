@@ -3,6 +3,13 @@ import logging
 import os
 import asyncio
 import urllib.parse
+from datetime import datetime
+import pytz
+import aiohttp
+from dotenv import load_dotenv
+
+# Load environment variables internally to avoid import-order issues in other entrypoints
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +19,9 @@ if DATABASE_URL:
 
 _pool = None
 _pool_lock = asyncio.Lock()
+
+# Global flag to track if the pgvector/topic_embedding column is supported and available in the database
+HAS_VECTOR_COLUMN = True
 
 async def get_pool():
     global _pool
@@ -46,18 +56,48 @@ async def get_pool():
     return _pool
 
 async def init_db():
+    global HAS_VECTOR_COLUMN
     pool = await get_pool()
-    if not pool:
-        logger.error("DATABASE_URL not set. Skipping DB init.")
+    if pool is None:
+        logger.warning("Database connection pool is None. Database remains offline.")
         return
     try:
         async with pool.acquire() as conn:
-            await conn.execute('''
+            try:
+                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+            except Exception as e:
+                logger.warning(f"Could not enable pgvector extension (non-critical): {e}")
+                
+            await conn.execute("""
                 CREATE TABLE IF NOT EXISTS subscribers (
-                    chat_id BIGINT PRIMARY KEY
+                    chat_id BIGINT PRIMARY KEY,
+                    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
-            ''')
-        logger.info("Database initialized.")
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS digests_cache (
+                    topic TEXT PRIMARY KEY,
+                    file_id TEXT NOT NULL,
+                    generated_date_ist DATE NOT NULL
+                )
+            """)
+            try:
+                await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
+                # Verify that the column was successfully added/exists
+                col_check = await conn.fetchrow("""
+                    SELECT column_name FROM information_schema.columns 
+                    WHERE table_name = 'digests_cache' AND column_name = 'topic_embedding'
+                """)
+                if not col_check:
+                    logger.warning("topic_embedding column missing from database schema. Vector/semantic caching disabled.")
+                    HAS_VECTOR_COLUMN = False
+                else:
+                    HAS_VECTOR_COLUMN = True
+            except Exception as e:
+                logger.warning(f"Could not add topic_embedding column (vector extension may be unsupported): {e}. Vector/semantic caching disabled.")
+                HAS_VECTOR_COLUMN = False
+                
+            logger.info(f"Database tables initialized. HAS_VECTOR_COLUMN: {HAS_VECTOR_COLUMN}")
     except Exception as e:
         logger.error(f"Failed to init DB: {e}")
 
@@ -102,3 +142,136 @@ async def close_db():
         await _pool.close()
         _pool = None
         logger.info("Database connection pool closed.")
+
+def get_current_ist_date():
+    ist = pytz.timezone('Asia/Kolkata')
+    return datetime.now(ist).date()
+
+async def get_embedding(text: str) -> list[float] | None:
+    url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
+    headers = {}
+    hf_token = os.getenv("HF_TOKEN")
+    if hf_token:
+        headers["Authorization"] = f"Bearer {hf_token}"
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json={"inputs": text}) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # HF API can return a list of floats or a list of list of floats
+                    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                        return data[0]
+                    elif isinstance(data, list) and len(data) > 0:
+                        return data
+                else:
+                    text_resp = await response.text()
+                    logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
+    except Exception as e:
+        logger.error(f"Error fetching embedding from HuggingFace: {e}")
+    return None
+
+async def get_cached_file_id_exact(topic: str) -> str | None:
+    pool = await get_pool()
+    if pool is None: return None
+    
+    current_ist_date = get_current_ist_date()
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT file_id FROM digests_cache 
+                WHERE topic = $1 AND generated_date_ist::DATE = $2::DATE
+            """, topic, current_ist_date)
+            if row:
+                return row['file_id']
+    except Exception as e:
+        logger.error(f"Error reading exact cache: {e}")
+    return None
+
+async def set_cached_file_id_exact(topic: str, file_id: str):
+    pool = await get_pool()
+    if pool is None: return
+    
+    current_ist_date = get_current_ist_date()
+    try:
+        async with pool.acquire() as conn:
+            if HAS_VECTOR_COLUMN:
+                await conn.execute("""
+                    INSERT INTO digests_cache (topic, file_id, generated_date_ist)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (topic) DO UPDATE 
+                    SET file_id = EXCLUDED.file_id,
+                        generated_date_ist = EXCLUDED.generated_date_ist,
+                        topic_embedding = NULL
+                """, topic, file_id, current_ist_date)
+            else:
+                await conn.execute("""
+                    INSERT INTO digests_cache (topic, file_id, generated_date_ist)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (topic) DO UPDATE 
+                    SET file_id = EXCLUDED.file_id,
+                        generated_date_ist = EXCLUDED.generated_date_ist
+                """, topic, file_id, current_ist_date)
+    except Exception as e:
+        logger.error(f"Error writing exact cache: {e}")
+
+async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> str | None:
+    pool = await get_pool()
+    if pool is None: return None
+    
+    if not HAS_VECTOR_COLUMN:
+        logger.info(f"Vector support disabled. Falling back to exact match for topic: '{topic}'")
+        return await get_cached_file_id_exact(topic)
+        
+    embedding = await get_embedding(topic)
+    if not embedding:
+        return await get_cached_file_id_exact(topic)
+        
+    current_ist_date = get_current_ist_date()
+    vec_str = str(embedding)
+    try:
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                SELECT file_id, 1 - (topic_embedding <=> $1::vector) as similarity
+                FROM digests_cache
+                WHERE generated_date_ist::DATE = $2::DATE
+                  AND topic_embedding IS NOT NULL
+                  AND 1 - (topic_embedding <=> $1::vector) >= $3
+                ORDER BY similarity DESC
+                LIMIT 1
+            """, vec_str, current_ist_date, threshold)
+            
+            if row:
+                logger.info(f"Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
+                return row['file_id']
+    except Exception as e:
+        logger.error(f"Error reading semantic cache: {e}")
+    return None
+
+async def set_cached_file_id_semantic(topic: str, file_id: str):
+    pool = await get_pool()
+    if pool is None: return
+    
+    if not HAS_VECTOR_COLUMN:
+        await set_cached_file_id_exact(topic, file_id)
+        return
+        
+    embedding = await get_embedding(topic)
+    if not embedding:
+        await set_cached_file_id_exact(topic, file_id)
+        return
+        
+    current_ist_date = get_current_ist_date()
+    vec_str = str(embedding)
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding)
+                VALUES ($1, $2, $3, $4::vector)
+                ON CONFLICT (topic) DO UPDATE 
+                SET file_id = EXCLUDED.file_id,
+                    generated_date_ist = EXCLUDED.generated_date_ist,
+                    topic_embedding = EXCLUDED.topic_embedding
+            """, topic, file_id, current_ist_date, vec_str)
+    except Exception as e:
+        logger.error(f"Error writing semantic cache: {e}")
