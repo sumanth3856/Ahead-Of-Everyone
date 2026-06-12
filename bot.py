@@ -199,7 +199,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "done_phases": set()
         }
         
+        # Track active generation session
+        context.bot_data.setdefault("active_user_generations", {})[chat_id] = False
+        
         def progress_callback(phase, progress, detail, mark_done=None):
+            if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
+                raise RuntimeError("Generation cancelled by user.")
             progress_state["phase"] = phase
             progress_state["progress"] = progress
             progress_state["detail"] = detail
@@ -215,6 +220,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         try:
             # Run the synchronous digest generation in a thread
             pdf_filename = await asyncio.to_thread(generate_latest_digest, 5, progress_callback)
+        except Exception as e:
+            if "cancelled by user" in str(e).lower():
+                logger.info(f"User {chat_id} cancelled the generation.")
+            else:
+                raise e
         finally:
             ticker_task.cancel()
             try:
@@ -225,6 +235,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await loading_msg.delete()
             except Exception as e:
                 logger.error(f"Failed to delete temporary loading message: {e}")
+            context.bot_data.get("active_user_generations", {}).pop(chat_id, None)
+            
+        if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
+            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+            await context.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
+            return
             
         if pdf_filename and os.path.exists(pdf_filename):
             try:
@@ -316,6 +332,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
             try:
                 await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
+            except Exception as e:
+                if "cancelled by admin" in str(e).lower():
+                    logger.info("Admin broadcast button callback cancelled.")
+                else:
+                    raise e
             finally:
                 ticker_task.cancel()
                 try:
@@ -326,6 +347,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     await loading_msg.delete()
                 except Exception:
                     pass
+                    
+            if context.bot_data.get("broadcast_cancelled", False):
+                await context.bot.send_message(chat_id=chat_id, text="🛑 *BROADCAST ABORTED*", parse_mode="Markdown")
+                return
+                
             keyboard = [
                 [
                     InlineKeyboardButton("📊 View Stats", callback_data="admin_stats"),
@@ -368,7 +394,12 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "done_phases": set()
     }
     
+    # Track active generation session
+    context.bot_data.setdefault("active_user_generations", {})[chat_id] = False
+    
     def progress_callback(phase, progress, detail, mark_done=None):
+        if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
+            raise RuntimeError("Generation cancelled by user.")
         progress_state["phase"] = phase
         progress_state["progress"] = progress
         progress_state["detail"] = detail
@@ -382,6 +413,11 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     try:
         pdf_filename = await asyncio.to_thread(generate_targeted_digest, query, 5, progress_callback)
+    except Exception as e:
+        if "cancelled by user" in str(e).lower():
+            logger.info(f"User {chat_id} cancelled the generation for '{query}'.")
+        else:
+            raise e
     finally:
         # Cancel the progress ticker
         ticker_task.cancel()
@@ -394,6 +430,12 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await loading_msg.delete()
         except Exception as e:
             logger.error(f"Failed to delete temporary loading message: {e}")
+        context.bot_data.get("active_user_generations", {}).pop(chat_id, None)
+        
+    if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
+        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+        await context.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
+        return
     
     if pdf_filename and os.path.exists(pdf_filename):
         try:
@@ -460,6 +502,11 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
     ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
     try:
         await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
+    except Exception as e:
+        if "cancelled by admin" in str(e).lower():
+            logger.info("Admin broadcast command cancelled.")
+        else:
+            raise e
     finally:
         ticker_task.cancel()
         try:
@@ -471,6 +518,10 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
         except Exception:
             pass
             
+    if context.bot_data.get("broadcast_cancelled", False):
+        await update.message.reply_text("🛑 *BROADCAST ABORTED*", parse_mode="Markdown")
+        return
+        
     keyboard = [
         [
             InlineKeyboardButton("📊 View Stats", callback_data="admin_stats"),
@@ -479,6 +530,31 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("🎯 *GLOBAL UPLINK COMPLETE* | Payload distributed.", reply_markup=reply_markup, parse_mode="Markdown")
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Cancel the current running global broadcast or individual user generation."""
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    if not chat_id:
+        return
+        
+    user_id = str(update.effective_user.id) if update.effective_user else ""
+    admin_id = os.getenv("ADMIN_ID", "6038057345")
+    is_admin = (user_id == admin_id)
+    
+    # 1. Admin trying to cancel global broadcast
+    if is_admin and context.bot_data.get("broadcast_in_progress", False):
+        context.bot_data["broadcast_cancelled"] = True
+        await update.message.reply_text("🛑 *CANCELLATION REQUESTED* | Halting the active broadcast pipeline. Standby...")
+        return
+        
+    # 2. Check if this specific user has an active generation running
+    active_gens = context.bot_data.get("active_user_generations", {})
+    if chat_id in active_gens:
+        active_gens[chat_id] = True
+        await update.message.reply_text("🛑 *CANCELLATION REQUESTED* | Halting your active pipeline. Standby...")
+        return
+        
+    await update.message.reply_text("ℹ️ No active generation is currently running for your session.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""
@@ -575,104 +651,119 @@ async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_
 async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: bool = False, progress_callback=None) -> None:
     """Scheduled job to generate the daily digest and send it to all subscribers."""
     logger.info("Starting scheduled daily broadcast...")
-    if progress_callback:
-        progress_callback("Finding Stories", 5, "Initializing subscriber database connections...")
+    context.bot_data["broadcast_in_progress"] = True
+    context.bot_data["broadcast_cancelled"] = False
     
-    subscribers = await database.get_all_subscribers()
-    if not subscribers:
-        admin_id = os.getenv("ADMIN_ID", "6038057345")
-        if admin_id:
-            try:
-                subscribers = [int(admin_id)]
-                logger.info(f"No subscribers in DB. Defaulting to admin ID {admin_id} for performance check.")
-            except ValueError:
-                pass
-                
-    if not subscribers:
-        logger.info("No subscribers found for broadcast. Skipping execution.")
-        if progress_callback:
-            progress_callback("Delivering", 100, "No subscribers found. Skipping broadcast.", mark_done="Finding Stories")
-        return
-        
-    cached_file_id = None if force_fresh else await database.get_cached_file_id_exact("latest")
     pdf_filename = None
-    
-    if cached_file_id:
-        logger.info("Using cached latest digest for scheduled broadcast.")
+    try:
         if progress_callback:
-            progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Finding Stories")
-            progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Writing Summaries")
-            progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Creating PDF")
-    else:
-        pdf_filename = await asyncio.to_thread(generate_latest_digest, 5, progress_callback)
-        if not pdf_filename or not os.path.exists(pdf_filename):
-            logger.error("Failed to generate PDF for broadcast.")
+            if context.bot_data.get("broadcast_cancelled", False):
+                raise RuntimeError("Broadcast cancelled by admin.")
+            progress_callback("Finding Stories", 5, "Initializing subscriber database connections...")
+        
+        subscribers = await database.get_all_subscribers()
+        if not subscribers:
+            admin_id = os.getenv("ADMIN_ID", "6038057345")
+            if admin_id:
+                try:
+                    subscribers = [int(admin_id)]
+                    logger.info(f"No subscribers in DB. Defaulting to admin ID {admin_id} for performance check.")
+                except ValueError:
+                    pass
+                    
+        if not subscribers:
+            logger.info("No subscribers found for broadcast. Skipping execution.")
             if progress_callback:
-                progress_callback("Delivering", 100, "⚠️ Generation failed.", mark_done="Delivering")
+                progress_callback("Delivering", 100, "No subscribers found. Skipping broadcast.", mark_done="Finding Stories")
             return
             
-    caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today."
-    
-    success_count = 0
-    pretty_filename = None
-    if pdf_filename:
-        pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
+        cached_file_id = None if force_fresh else await database.get_cached_file_id_exact("latest")
         
-    for idx, chat_id in enumerate(subscribers):
-        # 0.05 seconds delay between sends to prevent hitting Telegram limits
-        await asyncio.sleep(0.05)
+        if cached_file_id:
+            logger.info("Using cached latest digest for scheduled broadcast.")
+            if progress_callback:
+                if context.bot_data.get("broadcast_cancelled", False):
+                    raise RuntimeError("Broadcast cancelled by admin.")
+                progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Finding Stories")
+                progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Writing Summaries")
+                progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Creating PDF")
+        else:
+            pdf_filename = await asyncio.to_thread(generate_latest_digest, 5, progress_callback)
+            if not pdf_filename or not os.path.exists(pdf_filename):
+                logger.error("Failed to generate PDF for broadcast.")
+                if progress_callback:
+                    progress_callback("Delivering", 100, "⚠️ Generation failed.", mark_done="Delivering")
+                return
+                
+        caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today."
         
-        if progress_callback:
-            progress = 90 + int((idx / len(subscribers)) * 9)
-            progress_callback("Delivering", progress, f"Broadcasting payload to subscriber {idx + 1} of {len(subscribers)}...")
+        success_count = 0
+        pretty_filename = None
+        if pdf_filename:
+            pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
             
-        sent = False
-        for attempt in range(3):
-            try:
-                if cached_file_id:
-                    await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown")
-                else:
-                    with open(pdf_filename, "rb") as file:
-                        msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
-                        if msg and msg.document:
-                            cached_file_id = msg.document.file_id
-                            await database.set_cached_file_id_exact("latest", cached_file_id)
-                success_count += 1
-                sent = True
-                break
-            except RetryAfter as e:
-                logger.warning(f"Telegram rate limit hit (RetryAfter). Sleeping for {e.retry_after}s (attempt {attempt + 1}/3)...")
-                await asyncio.sleep(e.retry_after)
-            except Forbidden:
-                logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
-                await database.remove_subscriber(chat_id)
-                break
-            except BadRequest as e:
-                if "chat not found" in str(e).lower():
-                    logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
+        for idx, chat_id in enumerate(subscribers):
+            # Check for cancellation before sleeping or sending
+            if context.bot_data.get("broadcast_cancelled", False):
+                raise RuntimeError("Broadcast cancelled by admin.")
+                
+            # 0.05 seconds delay between sends to prevent hitting Telegram limits
+            await asyncio.sleep(0.05)
+            
+            if progress_callback:
+                progress = 90 + int((idx / len(subscribers)) * 9)
+                progress_callback("Delivering", progress, f"Broadcasting payload to subscriber {idx + 1} of {len(subscribers)}...")
+                
+            sent = False
+            for attempt in range(3):
+                if context.bot_data.get("broadcast_cancelled", False):
+                    raise RuntimeError("Broadcast cancelled by admin.")
+                try:
+                    if cached_file_id:
+                        await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown")
+                    else:
+                        with open(pdf_filename, "rb") as file:
+                            msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
+                            if msg and msg.document:
+                                cached_file_id = msg.document.file_id
+                                await database.set_cached_file_id_exact("latest", cached_file_id)
+                    success_count += 1
+                    sent = True
+                    break
+                except RetryAfter as e:
+                    logger.warning(f"Telegram rate limit hit (RetryAfter). Sleeping for {e.retry_after}s (attempt {attempt + 1}/3)...")
+                    await asyncio.sleep(e.retry_after)
+                except Forbidden:
+                    logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
                     await database.remove_subscriber(chat_id)
-                else:
-                    logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
-                break
-            except (NetworkError, TimedOut) as e:
-                logger.warning(f"Network error/timeout sending to {chat_id} (attempt {attempt + 1}/3): {e}")
-                if attempt < 2:
-                    await asyncio.sleep(1)
-                else:
-                    logger.error(f"Failed to send to {chat_id} after all retries: {e}")
+                    break
+                except BadRequest as e:
+                    if "chat not found" in str(e).lower():
+                        logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
+                        await database.remove_subscriber(chat_id)
+                    else:
+                        logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
+                    break
+                except (NetworkError, TimedOut) as e:
+                    logger.warning(f"Network error/timeout sending to {chat_id} (attempt {attempt + 1}/3): {e}")
+                    if attempt < 2:
+                        await asyncio.sleep(1)
+                    else:
+                        logger.error(f"Failed to send to {chat_id} after all retries: {e}")
+                except Exception as e:
+                    logger.error(f"Failed to send to {chat_id} due to unexpected error: {e}")
+                    break
+                
+        logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
+        if progress_callback:
+            progress_callback("Delivering", 100, f"Global broadcast complete! Distributed to {success_count} subscribers.", mark_done="Delivering")
+    finally:
+        context.bot_data["broadcast_in_progress"] = False
+        if pdf_filename:
+            try:
+                os.remove(pdf_filename)
             except Exception as e:
-                logger.error(f"Failed to send to {chat_id} due to unexpected error: {e}")
-                break
-            
-    logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
-    if progress_callback:
-        progress_callback("Delivering", 100, f"Global broadcast complete! Distributed to {success_count} subscribers.", mark_done="Delivering")
-    
-    if pdf_filename:
-        try:
-            os.remove(pdf_filename)
-        except Exception as e:
-            logger.error(f"Failed to clean up broadcast PDF {pdf_filename}: {e}")
+                logger.error(f"Failed to clean up broadcast PDF {pdf_filename}: {e}")
 
 async def ping_handler(request):
     return web.Response(text="OK")
@@ -695,6 +786,19 @@ async def post_init(app: Application) -> None:
     await database.init_db()
     app.bot_data['web_runner'] = await start_web_server()
     
+    # Register global/default commands for all users
+    try:
+        global_commands = [
+            BotCommand("start", "🚀 Greet & show menu"),
+            BotCommand("news", "📰 Fetch news (e.g., /news AI)"),
+            BotCommand("help", "📖 Show help manual"),
+            BotCommand("cancel", "🛑 Cancel active generation")
+        ]
+        success_global = await app.bot.set_my_commands(global_commands)
+        logger.info(f"Telegram set_my_commands (global) API response: {success_global}")
+    except Exception as e:
+        logger.error(f"Failed to register global commands: {e}")
+        
     # Register admin-scoped commands dynamically on startup
     try:
         admin_id = os.getenv("ADMIN_ID", "6038057345")
@@ -707,10 +811,11 @@ async def post_init(app: Application) -> None:
                     BotCommand("status", "🖥️ Check system status"),
                     BotCommand("help", "📖 Show help menu"),
                     BotCommand("stats", "📊 View subscriber stats"),
-                    BotCommand("broadcast", "📢 Force immediate broadcast")
+                    BotCommand("broadcast", "📢 Force immediate broadcast"),
+                    BotCommand("cancel", "🛑 Cancel active broadcast/generation")
                 ]
                 success = await app.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_chat_id))
-                logger.info(f"Telegram set_my_commands API response: {success}")
+                logger.info(f"Telegram set_my_commands (admin) API response: {success}")
                 
                 # Verify registration
                 registered = await app.bot.get_my_commands(scope=BotCommandScopeChat(chat_id=admin_chat_id))
@@ -739,6 +844,7 @@ def build_bot() -> Application:
         .token(BOT_TOKEN)
         .post_init(post_init)
         .post_stop(post_stop)
+        .concurrent_updates(True)
         .build()
     )
     
@@ -750,6 +856,8 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("stats", safe_handler(admin_stats_command)))
     app.add_handler(CommandHandler("admin_stats", safe_handler(admin_stats_command)))
     app.add_handler(CommandHandler("admin_broadcast", safe_handler(admin_broadcast_command)))
+    app.add_handler(CommandHandler("cancel", safe_handler(cancel_command)))
+    app.add_handler(CommandHandler("cancel_broadcast", safe_handler(cancel_command)))
     app.add_handler(CallbackQueryHandler(safe_handler(button_handler)))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, safe_handler(general_message_handler)))
     

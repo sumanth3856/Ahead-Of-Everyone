@@ -20,6 +20,7 @@ import time
 
 MONTSERRAT_REG_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Regular.ttf"
 MONTSERRAT_BOLD_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf"
+MONTSERRAT_ITALIC_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Italic.ttf"
 
 def ensure_font_exists(filename: str, url: str) -> bool:
     font_path = f"assets/{filename}"
@@ -50,31 +51,8 @@ def ensure_logo_exists() -> bool:
     logo_path = "assets/logo.png"
     if os.path.exists(logo_path) and os.path.getsize(logo_path) > 0:
         return True
-    urls_to_try = [
-        "https://raw.githubusercontent.com/sumanth3856/Ahead-Of-Everyone/main/assets/logo.png",
-        "https://raw.githubusercontent.com/sumanth3856/Ahead-Of-Everyone/master/assets/logo.png",
-        "https://picsum.photos/200"
-    ]
-    if not os.path.exists("assets"):
-        os.makedirs("assets")
-    for url in urls_to_try:
-        try:
-            logger.info(f"Attempting to download missing logo from: {url}")
-            req = urllib.request.Request(
-                url, 
-                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-            )
-            with urllib.request.urlopen(req, timeout=5) as response, open(logo_path, 'wb') as out_file:
-                out_file.write(response.read())
-            logger.info("Successfully downloaded missing logo.")
-            return True
-        except Exception as e:
-            logger.warning(f"Failed to download logo from {url}: {e}")
-    if os.path.exists(logo_path) and os.path.getsize(logo_path) == 0:
-        try:
-            os.remove(logo_path)
-        except Exception:
-            pass
+    # We purposefully don't try to download from broken URLs anymore.
+    # The PDF generator will seamlessly fall back to drawing a vector logo (AoE circle).
     return False
 
 def sanitize_text(text: str) -> str:
@@ -114,10 +92,12 @@ class CustomPDF(FPDF):
             
         ensure_font_exists("Montserrat-Regular.ttf", MONTSERRAT_REG_URL)
         ensure_font_exists("Montserrat-Bold.ttf", MONTSERRAT_BOLD_URL)
+        ensure_font_exists("Montserrat-Italic.ttf", MONTSERRAT_ITALIC_URL)
         
         try:
             self.add_font("Montserrat", "", "assets/Montserrat-Regular.ttf")
             self.add_font("Montserrat", "B", "assets/Montserrat-Bold.ttf")
+            self.add_font("Montserrat", "I", "assets/Montserrat-Italic.ttf")
             self.use_fallback_fonts = False
         except Exception as e:
             logger.error(f"Error loading fonts, falling back to built-in fonts: {e}")

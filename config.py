@@ -25,7 +25,7 @@ COPYRIGHT = "© 2026 Ahead of Everyone. All Rights Reserved."
 
 # OpenRouter / AI Settings
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "google/gemini-2.5-flash:free"  # Confirmed free June 2026
+OPENROUTER_MODEL = "deepseek/deepseek-r1-distill-llama-70b:free"  # Confirmed free and stable
 
 # Color Palette (Luxury Slate & Neon Green)
 COLOR_DARK = (10, 15, 29)        
