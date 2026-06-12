@@ -2,6 +2,7 @@ import os
 import asyncio
 import logging
 from datetime import time, datetime
+from typing import Optional
 import pytz
 from dotenv import load_dotenv
 
@@ -104,7 +105,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     welcome_text, reply_markup = get_main_menu(first_name, is_subscribed)
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
-async def update_loading_message(message, context, progress_state, topic=None) -> None:
+async def update_loading_message(message, bot, progress_state, topic=None) -> None:
     """Periodically update the loading message based on the real-time progress state from the backend logic."""
     topic_str = f" about *{topic}*" if topic else ""
     chat_id = message.chat_id
@@ -119,7 +120,7 @@ async def update_loading_message(message, context, progress_state, topic=None) -
             progress = progress_state.get("progress", 0)
             action = "upload_document" if progress >= 70 else "typing"
             try:
-                await context.bot.send_chat_action(chat_id=chat_id, action=action)
+                await bot.send_chat_action(chat_id=chat_id, action=action)
             except Exception:
                 pass
                 
@@ -217,72 +218,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             except Exception as e:
                 logger.warning(f"Failed to send cached file_id, generating fresh: {e}")
                 
-        progress_state = {
-            "phase": "Finding Stories",
-            "progress": 0,
-            "detail": "🌐 Initializing request...",
-            "done_phases": set()
-        }
-        
-        # Track active generation session
-        context.bot_data.setdefault("active_user_generations", {})[chat_id] = False
-        
-        def progress_callback(phase, progress, detail, mark_done=None):
-            if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
-                raise RuntimeError("Generation cancelled by user.")
-            progress_state["phase"] = phase
-            progress_state["progress"] = progress
-            progress_state["detail"] = detail
-            if mark_done:
-                progress_state["done_phases"].add(mark_done)
-                
         loading_msg = await edit_or_reply(text="⏳ *FETCHING NEWS* | Searching for the latest tech stories... Just a moment!")
         
-        # Start dynamic progress updates in the background
-        ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
-        
-        pdf_filename = None
-        try:
-            # Run the async digest generation directly
-            pdf_filename = await generate_latest_digest(5, progress_callback)
-        except Exception as e:
-            if "cancelled by user" in str(e).lower():
-                logger.info(f"User {chat_id} cancelled the generation.")
-            else:
-                raise e
-        finally:
-            ticker_task.cancel()
-            try:
-                await ticker_task
-            except asyncio.CancelledError:
-                pass
-            try:
-                await loading_msg.delete()
-            except Exception as e:
-                logger.error(f"Failed to delete temporary loading message: {e}")
-            context.bot_data.get("active_user_generations", {}).pop(chat_id, None)
-            
-        if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
-            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-            await context.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
-            return
-            
-        if pdf_filename and os.path.exists(pdf_filename):
-            try:
-                caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
-                pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
-                with open(pdf_filename, "rb") as file:
-                    msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
-                    if msg and msg.document:
-                        await database.set_cached_file_id_exact("latest", msg.document.file_id)
-            finally:
-                try:
-                    os.remove(pdf_filename)
-                except Exception as e:
-                    logger.error(f"Failed to delete {pdf_filename}: {e}")
-        else:
-            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-            await context.bot.send_message(chat_id=chat_id, text="⚠️ *ERROR* | Sorry, I had some trouble generating the newsletter. Please try again in a few minutes!", reply_markup=back_keyboard, parse_mode="Markdown")
+        await enqueue_generation(chat_id, None, loading_msg, context.application, is_subscribed)
             
     elif action == "subscribe":
         added = await database.add_subscriber(chat_id)
@@ -400,6 +338,157 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             reply_markup = InlineKeyboardMarkup(keyboard)
             await context.bot.send_message(chat_id=chat_id, text="✅ Global broadcast completed successfully!", reply_markup=reply_markup, parse_mode="Markdown")
 
+import uuid
+
+async def update_queue_status(message, bot, chat_id: int, queue_list: list):
+    """Dynamically updates the waiting message for users in the queue."""
+    ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️"]
+    idx = 0
+    while True:
+        try:
+            if chat_id not in queue_list:
+                break
+                
+            position = queue_list.index(chat_id) + 1
+            est_wait = position * 45  # roughly 45s per generation
+            
+            gauge_len = 16
+            filled = idx % gauge_len
+            gauge = "░" * filled + "█" * 3 + "░" * (gauge_len - filled - 3)
+            if len(gauge) > gauge_len:
+                gauge = gauge[:gauge_len]
+            
+            tick_emoji = ticker_emojis[idx % len(ticker_emojis)]
+            idx += 1
+            
+            text = (
+                f"{tick_emoji} *YOU ARE IN LINE* | Please hold!\n\n"
+                f"You are currently in position #{position} in the queue to prevent server overload.\n"
+                f"Estimated wait time: ~{est_wait} seconds.\n\n"
+                f"[{gauge}] waiting...\n\n"
+                f"_(Too long? You can click /cancel to abort and save resources)_"
+            )
+            
+            await message.edit_text(text=text, parse_mode="Markdown")
+            await asyncio.sleep(2.5)
+        except Exception:
+            await asyncio.sleep(2.5)
+
+async def enqueue_generation(chat_id: int, query: Optional[str], message, app: Application, is_subscribed: bool):
+    """Adds a generation job to the global FIFO queue."""
+    job_id = str(uuid.uuid4())
+    job = {
+        "job_id": job_id,
+        "chat_id": chat_id,
+        "query": query, # None for Latest Digest
+        "message": message,
+        "is_subscribed": is_subscribed
+    }
+    
+    app.bot_data.setdefault("queue_list", []).append(chat_id)
+    app.bot_data.setdefault("active_user_generations", {})[chat_id] = False
+    
+    await app.bot_data["request_queue"].put(job)
+    asyncio.create_task(update_queue_status(message, app.bot, chat_id, app.bot_data["queue_list"]))
+
+async def queue_worker(app: Application):
+    """Background task that processes the queue sequentially (1 at a time)."""
+    while True:
+        job = await app.bot_data["request_queue"].get()
+        chat_id = job["chat_id"]
+        
+        queue_list = app.bot_data.get("queue_list", [])
+        if chat_id in queue_list:
+            queue_list.remove(chat_id)
+            
+        if app.bot_data.get("active_user_generations", {}).get(chat_id, False):
+            logger.info(f"Job {job['job_id']} for chat {chat_id} was cancelled before starting.")
+            app.bot_data["request_queue"].task_done()
+            continue
+            
+        query = job["query"]
+        message = job["message"]
+        is_subscribed = job["is_subscribed"]
+        
+        progress_state = {
+            "phase": "Finding Stories",
+            "progress": 0,
+            "detail": f"🌐 Initializing search...",
+            "done_phases": set()
+        }
+        
+        def progress_callback(phase, progress, detail, mark_done=None):
+            if app.bot_data.get("active_user_generations", {}).get(chat_id, False):
+                raise RuntimeError("Generation cancelled by user.")
+            progress_state["phase"] = phase
+            progress_state["progress"] = progress
+            progress_state["detail"] = detail
+            if mark_done:
+                progress_state["done_phases"].add(mark_done)
+                
+        ticker_task = asyncio.create_task(update_loading_message(message, app.bot, progress_state, topic=query))
+        
+        pdf_filename = None
+        try:
+            if query:
+                pdf_filename = await generate_targeted_digest(query, 5, progress_callback)
+            else:
+                pdf_filename = await generate_latest_digest(5, progress_callback)
+        except Exception as e:
+            if "cancelled by user" in str(e).lower():
+                logger.info(f"User {chat_id} cancelled the generation.")
+            else:
+                logger.error(f"Error during queued generation: {e}")
+        finally:
+            ticker_task.cancel()
+            try:
+                await ticker_task
+            except asyncio.CancelledError:
+                pass
+            try:
+                await message.delete()
+            except Exception as e:
+                logger.error(f"Failed to delete queue/loading message: {e}")
+            app.bot_data.get("active_user_generations", {}).pop(chat_id, None)
+            
+        if app.bot_data.get("active_user_generations", {}).get(chat_id, False):
+            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+            await app.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
+        else:
+            if pdf_filename and os.path.exists(pdf_filename):
+                try:
+                    caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
+                    if query:
+                        caption = f"✅ *SEARCH FINISHED* | Sending your newsletter about *{query}*..."
+                        
+                    pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
+                    if is_subscribed:
+                        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+                    else:
+                        keyboard = [
+                            [InlineKeyboardButton("🔔 Get Daily Digests", callback_data="subscribe")],
+                            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+                        ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    with open(pdf_filename, "rb") as file:
+                        msg = await app.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
+                        if msg and msg.document:
+                            if query:
+                                await database.set_cached_file_id_semantic(query, msg.document.file_id)
+                            else:
+                                await database.set_cached_digest_file_id("AI", msg.document.file_id, datetime.now(pytz.timezone('Asia/Kolkata')).date())
+                finally:
+                    try:
+                        os.remove(pdf_filename)
+                    except Exception as e:
+                        logger.error(f"Failed to delete {pdf_filename}: {e}")
+            else:
+                back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+                await app.bot.send_message(chat_id=chat_id, text=f"😔 *NOT FOUND* | Sorry, I couldn't find enough news right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
+                
+        app.bot_data["request_queue"].task_done()
+
+
 async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /news command to fetch targeted news using semantic matching."""
     query = " ".join(context.args)
@@ -428,82 +517,10 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         except Exception as e:
             logger.warning(f"Failed to send cached targeted file_id, generating fresh: {e}")
             
-    progress_state = {
-        "phase": "Finding Stories",
-        "progress": 0,
-        "detail": f"🌐 Initializing search for '{query}'...",
-        "done_phases": set()
-    }
-    
-    # Track active generation session
-    context.bot_data.setdefault("active_user_generations", {})[chat_id] = False
-    
-    def progress_callback(phase, progress, detail, mark_done=None):
-        if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
-            raise RuntimeError("Generation cancelled by user.")
-        progress_state["phase"] = phase
-        progress_state["progress"] = progress
-        progress_state["detail"] = detail
-        if mark_done:
-            progress_state["done_phases"].add(mark_done)
-            
+    is_subscribed = await database.is_subscriber(chat_id)
     loading_msg = await update.message.reply_text(f"⏳ *FETCHING NEWS* | Finding stories about *{query}*... Just a moment!", parse_mode="Markdown")
     
-    # Start dynamic progress updates in the background
-    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state, topic=query))
-    
-    try:
-        pdf_filename = await generate_targeted_digest(query, 5, progress_callback)
-    except Exception as e:
-        if "cancelled by user" in str(e).lower():
-            logger.info(f"User {chat_id} cancelled the generation for '{query}'.")
-        else:
-            raise e
-    finally:
-        # Cancel the progress ticker
-        ticker_task.cancel()
-        try:
-            await ticker_task
-        except asyncio.CancelledError:
-            pass
-        # Delete the temporary loading message
-        try:
-            await loading_msg.delete()
-        except Exception as e:
-            logger.error(f"Failed to delete temporary loading message: {e}")
-        context.bot_data.get("active_user_generations", {}).pop(chat_id, None)
-        
-    if context.bot_data.get("active_user_generations", {}).get(chat_id, False):
-        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-        await context.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
-        return
-    
-    if pdf_filename and os.path.exists(pdf_filename):
-        try:
-            caption = f"✅ *SEARCH FINISHED* | Sending your newsletter about *{query}*..."
-            pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
-            is_subscribed = await database.is_subscriber(chat_id)
-            if is_subscribed:
-                keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
-            else:
-                keyboard = [
-                    [InlineKeyboardButton("🔔 Get Daily Digests", callback_data="subscribe")],
-                    [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
-                ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            with open(pdf_filename, "rb") as file:
-                msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
-                if msg and msg.document:
-                    await database.set_cached_file_id_semantic(query, msg.document.file_id)
-            progress_callback("Delivering", 100, "Delivery complete!", mark_done="Delivering")
-        finally:
-            try:
-                os.remove(pdf_filename)
-            except Exception as e:
-                logger.error(f"Failed to delete {pdf_filename}: {e}")
-    else:
-        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-        await context.bot.send_message(chat_id=chat_id, text=f"😔 *NOT FOUND* | Sorry, I couldn't find enough news about *{query}* right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
+    await enqueue_generation(chat_id, query, loading_msg, context.application, is_subscribed)
 
 @admin_only
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -811,6 +828,10 @@ async def post_init(app: Application) -> None:
     """Initialize the database during bot startup."""
     await database.init_db()
     
+    app.bot_data['request_queue'] = asyncio.Queue()
+    app.bot_data['queue_list'] = []
+    app.bot_data['queue_worker_task'] = asyncio.create_task(queue_worker(app))
+    
     # Register global/default commands for all users
     try:
         global_commands = [
@@ -852,6 +873,13 @@ async def post_init(app: Application) -> None:
 
 async def post_stop(app: Application) -> None:
     """Gracefully close external resources."""
+    worker = app.bot_data.get('queue_worker_task')
+    if worker:
+        worker.cancel()
+        try:
+            await worker
+        except asyncio.CancelledError:
+            pass
     await database.close_db()
 
 def build_bot() -> Application:

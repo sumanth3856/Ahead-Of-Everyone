@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-montserrat);
+  
+  --color-brand: #711bd1;
+  --color-brand-light: #8e3ee4;
+  --color-brand-glow: rgba(113, 27, 209, 0.5);
+  
+  --color-background: #050508; /* Deep cyberpunk black */
+  --color-surface: #111116;    /* Card background */
+  --color-surface-hover: #1a1a24;
+  --color-foreground: #f8f8f8;
+  --color-muted: #8a8a99;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), sans-serif;
+}
+
+/* Custom Cyberpunk Utilities */
+@utility glass {
+  background: rgba(17, 17, 22, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(113, 27, 209, 0.15);
+}
+
+@utility text-glow {
+  text-shadow: 0 0 12px var(--color-brand-glow);
+}
+
+@utility bg-glow {
+  box-shadow: 0 0 25px 0 var(--color-brand-glow);
+}
