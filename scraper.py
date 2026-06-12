@@ -12,6 +12,7 @@ import calendar
 import urllib.parse
 from openai import OpenAI
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 
 import config
 
@@ -346,6 +347,29 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
         logger.error(f"Error fetching RSS {feed_url}: {e}")
     return items
 
+def fetch_full_article_text(url: str) -> str:
+    """Scrapes the full article text from the URL as a fallback."""
+    logger.info(f"Attempting deep scrape for fallback text: {url}")
+    try:
+        resp = _http_session.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
+            timeout=10
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
+            script.extract()
+            
+        paragraphs = soup.find_all('p')
+        text = " ".join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
+        return text
+    except Exception as e:
+        logger.warning(f"Deep scrape failed for {url}: {e}")
+        return ""
+
 def fetch_story_details(item: Dict) -> Optional[Dict]:
     logger.info(f"AI Processing: {item['title']}")
     metadata = item.get('metadata', None)
@@ -391,16 +415,29 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
         else:
             category = "05 . NEWS . TECH POLICY"
 
+        # Try to deep scrape the full article
+        full_text = fetch_full_article_text(item['url'])
+        if full_text and len(full_text) > 100:
+            core_text = full_text
+        else:
+            core_text = snippet[len(brief):].strip()
+            
+        if not core_text:
+            core_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
+            
+        # Clean up core_text for layout
+        core_text = " ".join(core_text.split())
+        if len(core_text) > 240:
+            core_text = core_text[:237] + "..."
+
         structured_data = {
             "category": category,
             "headline": clean_headline,
             "headline_highlight": highlight,
             "the_brief": brief,
-            "core_breakdown": [
-                {"topic": "Context", "description": "Rapidly developing story. Full intelligence synthesis is currently compiling."},
-                {"topic": "Update", "description": "Please review the source link for raw, unfiltered developments."}
-            ],
-            "the_edge": "A critical industry update to watch as developments unfold."
+            "core_breakdown": core_text,
+            "the_edge": "A critical industry update to watch as developments unfold.",
+            "the_deep_dive": "Explore the full coverage via the attached source link."
         }
         
     structured_data['url'] = item['url']

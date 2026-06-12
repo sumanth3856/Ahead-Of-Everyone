@@ -237,6 +237,9 @@ async def get_embedding(text: str) -> list[float] | None:
                     text_resp = await response.text()
                     logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
                     break
+        except aiohttp.ClientConnectorError as e:
+            logger.warning(f"HuggingFace connection/DNS error: {e}. Skipping embedding query.")
+            return None
         except Exception as e:
             logger.error(f"Error fetching embedding from HuggingFace (attempt {attempt + 1}/3): {e}")
             if attempt < 2:
