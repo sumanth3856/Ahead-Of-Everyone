@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Strict 3-Color Premium Palette
 BRAND_ACCENT = (113, 27, 209)  # Deep Purple
-BLACK = (10, 10, 10)           # Pitch Black
+BLACK = (0, 0, 0)              # Pure Crisp Black
 WHITE = (255, 255, 255)        # Crisp White
 
 # Pre-compiled category cleaning pattern
@@ -124,7 +124,17 @@ class CustomPDF(FPDF):
         if self.custom_topic:
             meta_text += f"   |   TOPIC: {self.custom_topic.upper()}"
             
-        self.cell(0, 4, meta_text, ln=1, align="R")
+        # Draw logo in top right corner
+        logo_path = "assets/logo.png"
+        logo_w = 8
+        logo_h = 8
+        try:
+            if os.path.exists(logo_path):
+                self.image(logo_path, x=198 - logo_w, y=8, w=logo_w, h=logo_h)
+        except Exception as e:
+            logger.warning(f"Failed to draw header logo: {e}")
+            
+        self.cell(0, 4, meta_text, ln=1, align="L")
         
         # Hairline
         self.set_draw_color(*BLACK)
@@ -196,9 +206,9 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_font("Montserrat", "", 12)
     pdf.set_text_color(*WHITE)
     if custom_topic:
-        tagline = f"ON-DEMAND TACTICAL BRIEFING: {custom_topic.upper()}"
+        tagline = f"CURATED INTELLIGENCE BRIEFING: {custom_topic.upper()}"
     else:
-        tagline = "DAILY AUTONOMOUS TECH INTELLIGENCE"
+        tagline = "CURATING TOMORROW'S INNOVATIONS, TODAY."
     pdf.cell(0, 8, tagline, align="C", ln=1)
     
     # Vertical Stripe (Anchor for Feature Block)
@@ -211,8 +221,11 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_y(wy + 10)
     pdf.set_x(24) # Leaves 12mm margin + 5mm stripe + 7mm gap = 24
     pdf.set_font("Montserrat", "B", 11)
-    pdf.set_text_color(*BRAND_ACCENT)
-    pdf.cell(0, 10, "01 . THE APEX", align="L", ln=1)
+    apex_text = " 01 . THE APEX "
+    w = pdf.get_string_width(apex_text)
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(w, 8, apex_text, align="C", ln=1, fill=True)
     
     pdf.set_y(pdf.get_y() + 2)
     pdf.set_x(24)
@@ -227,9 +240,12 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.multi_cell(160, 7, top_story.get("the_brief", ""), align="L")
 
 def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
+    pdf.suppress_header = True
     pdf.add_page()
     pdf.set_fill_color(*WHITE)
     pdf.rect(0, 0, 210, 297, 'F')
+    pdf.suppress_header = False
+    pdf.header()
     
     pdf.set_y(25)
     pdf.set_font("Montserrat", "B", 36)
@@ -288,9 +304,12 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
         y_ptr += 6
 
 def draw_article_page(pdf: CustomPDF, index: int, story: dict):
+    pdf.suppress_header = True
     pdf.add_page()
     pdf.set_fill_color(*WHITE)
     pdf.rect(0, 0, 210, 297, 'F')
+    pdf.suppress_header = False
+    pdf.header()
     
     # Purple indicator stripe
     pdf.set_fill_color(*BRAND_ACCENT)
@@ -401,11 +420,13 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.multi_cell(186, 7, deep_dive_text, align="J", fill=True)
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
-    pdf.suppress_header = False
+    pdf.suppress_header = True
     pdf.suppress_footer = False
     pdf.add_page()
     pdf.set_fill_color(*WHITE)
     pdf.rect(0, 0, 210, 297, 'F')
+    pdf.suppress_header = False
+    pdf.header()
     
     pdf.set_y(25)
     pdf.set_font("Montserrat", "B", 36)
@@ -476,9 +497,12 @@ def draw_conclusion_page(pdf: CustomPDF):
     
     pdf.set_y(145)
     pdf.set_font("Montserrat", "B", 12)
-    pdf.set_text_color(*BRAND_ACCENT)
-    text = "MISSION ACCOMPLISHED. SEE YOU TOMORROW."
-    pdf.cell(0, 10, text, align="C", ln=1)
+    text = " MISSION ACCOMPLISHED. SEE YOU TOMORROW. "
+    w = pdf.get_string_width(text) + 6
+    pdf.set_x((210 - w) / 2)
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(w, 10, text, align="C", ln=1, fill=True)
 
     # Custom Conclusion Footer
     pdf.set_y(275)
