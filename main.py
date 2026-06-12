@@ -2,7 +2,7 @@ import os
 import logging
 import json
 import time
-import re
+import asyncio
 from dotenv import load_dotenv
 
 # Initialize config/logging
@@ -13,12 +13,12 @@ from telegram_client import send_pdf_to_telegram
 
 logger = logging.getLogger(__name__)
 
-def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
+async def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
     logger.info("Generating latest digest...")
     try:
         if progress_callback:
             progress_callback("Finding Stories", 5, "Connecting to news feeds to fetch daily articles...")
-        stories = fetch_dynamic_news(limit, progress_callback)
+        stories = await fetch_dynamic_news(limit, progress_callback)
         pdf_filename = generate_digest_pdf(stories, progress_callback=progress_callback)
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
@@ -51,12 +51,16 @@ def save_query_cache(cache: dict) -> None:
     except Exception as e:
         logger.error(f"Failed to save query cache: {e}")
 
-def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str | None:
+import string
+# Fast C-level translation table to remove punctuation and whitespace
+NORM_TRANS = str.maketrans('', '', string.punctuation + string.whitespace)
+
+async def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str | None:
     logger.info(f"Generating targeted digest for: {query}")
     try:
         cache = load_query_cache()
-        # Normalize: exact match only (case-insensitive, strip punctuation/spaces)
-        norm_query = re.sub(r'[^\w\s]', '', query.lower()).replace(' ', '')
+        # Normalize: exact match only (case-insensitive, strip punctuation/spaces) using ultra-fast translate
+        norm_query = query.lower().translate(NORM_TRANS)
         
         if norm_query in cache:
             entry = cache[norm_query]
@@ -70,7 +74,7 @@ def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str
                     
         if progress_callback:
             progress_callback("Finding Stories", 5, f"Scraping news feeds for '{query}'...")
-        stories = fetch_targeted_news(query, limit, progress_callback)
+        stories = await fetch_targeted_news(query, limit, progress_callback)
         pdf_filename = generate_digest_pdf(stories, custom_topic=query, progress_callback=progress_callback)
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
@@ -87,11 +91,11 @@ def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str
         logger.error(f"Error during targeted digest generation: {e}", exc_info=True)
         return None
 
-def main() -> None:
+async def main() -> None:
     logger.info("Starting AoE Tech News execution pipeline (Manual Run).")
     pdf_filename = None
     try:
-        pdf_filename = generate_latest_digest(5)
+        pdf_filename = await generate_latest_digest(5)
         if not pdf_filename:
             return
             
@@ -113,4 +117,4 @@ def main() -> None:
                 logger.error(f"Failed to delete {pdf_filename}: {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

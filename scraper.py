@@ -3,14 +3,14 @@ import json
 import logging
 import feedparser
 import re
-import requests
+import aiohttp
+import asyncio
 from typing import List, Dict, Optional
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import time
 import calendar
 import urllib.parse
-from openai import OpenAI
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 
@@ -24,7 +24,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 def init_openai_client():
     if not OPENROUTER_API_KEY:
         logger.warning("OPENROUTER_API_KEY is not set. AI Summarization will fail.")
-    return OpenAI(
+    return AsyncOpenAI(
         base_url=config.OPENROUTER_API_URL,
         api_key=OPENROUTER_API_KEY or "dummy_key_to_prevent_startup_crash",
         max_retries=0,
@@ -40,24 +40,17 @@ HTML_STRIP_RE = re.compile(r'<[^>]+>')
 WORD_TOKEN_RE = re.compile(r'\w+')
 HEADLINE_CLEAN_RE = re.compile(r'\s+[-|]\s+[^|-]+$')
 
-from urllib3.util import Retry
-from requests.adapters import HTTPAdapter
+# Global aiohttp session to enable HTTP Keep-Alive connection pooling
+_http_session = None
 
-# Global requests session to enable HTTP Keep-Alive connection pooling
-_http_session = requests.Session()
+async def get_http_session() -> aiohttp.ClientSession:
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        connector = aiohttp.TCPConnector(limit=50, keepalive_timeout=60)
+        _http_session = aiohttp.ClientSession(connector=connector)
+    return _http_session
 
-def setup_http_session(session):
-    retries = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 502, 503, 504],
-        raise_on_status=False
-    )
-    adapter = HTTPAdapter(max_retries=retries)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
 
-setup_http_session(_http_session)
 
 def load_sent_registry() -> List[Dict]:
     if os.path.exists(REGISTRY_FILE):
@@ -150,21 +143,41 @@ def clean_json_content(content: str) -> str:
     content = content.strip()
     return content
 
+def clean_markdown_text(text) -> str:
+    if not isinstance(text, str):
+        return text
+    # Remove literal markdown bold asterisks and underscores
+    text = text.replace("**", "").replace("__", "")
+    text = text.strip()
+    # Remove literal explicit quotes if the AI accidentally added them inside the string value
+    if text.startswith('"') and text.endswith('"') and len(text) > 1:
+        text = text[1:-1]
+    if text.startswith("'") and text.endswith("'") and len(text) > 1:
+        text = text[1:-1]
+    return text.strip()
+
 def try_parse_json(content: str) -> Optional[Dict]:
     content = clean_json_content(content)
+    parsed = None
     try:
-        return json.loads(content)
+        parsed = json.loads(content)
     except json.JSONDecodeError:
         # Try finding JSON block manually via regex in case there is text before/after
         match = re.search(r'\{.*\}', content, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(0))
+                parsed = json.loads(match.group(0))
             except Exception:
                 pass
+                
+    if parsed and isinstance(parsed, dict):
+        for k, v in parsed.items():
+            parsed[k] = clean_markdown_text(v)
+        return parsed
+        
     return None
 
-def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
+async def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
     logger.warning(f"Attempting to repair invalid JSON structure using model {model_id}...")
     repair_prompt = (
         "You are a strict JSON fixer. Fix the following invalid JSON string so it is valid JSON according to the schema:\n"
@@ -172,6 +185,7 @@ def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
         "  \"category\": \"tag\",\n"
         "  \"headline\": \"string\",\n"
         "  \"headline_highlight\": \"string\",\n"
+        "  \"radar_brief\": \"string\",\n"
         "  \"the_brief\": \"string\",\n"
         "  \"core_breakdown\": \"string\",\n"
         "  \"the_edge\": \"string\",\n"
@@ -180,7 +194,7 @@ def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
         "Output ONLY valid JSON. Do not include markdown formatting like ```json."
     )
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=model_id,
             messages=[
                 {"role": "system", "content": repair_prompt},
@@ -198,7 +212,7 @@ def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
         logger.warning(f"Failed to repair JSON with model {model_id}: {e}")
     return None
 
-def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
+async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
     """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout.
     
     Args:
@@ -215,9 +229,10 @@ JSON Schema:
   "category": "A 3-part tag using the SECTOR hint if provided (e.g., '01 . FEATURE . AI INNOVATION')",
   "headline": "An eye-catching, scroll-stopping headline that rephrases the original to hook the reader",
   "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline.",
+  "radar_brief": "A punchy, single-sentence teaser designed for the Table of Contents. Must be strictly under 120 characters to avoid visual truncation.",
   "the_brief": "A dense 2-sentence paragraph answering Who, What, When, Where, and Why. (Strict limit: 250 characters max).",
   "core_breakdown": "A tightly woven detailed paragraph of facts (up to 7 sentences). Each sentence must contain highly specific details (metrics, technology names, specific mechanisms) rather than generic fluff. (Strict limit: 600 characters max).",
-  "the_edge": "A detailed paragraph blending analytical hook and futuristic prediction. Make it bold and informative. (Strict limit: 350 characters max).",
+  "the_edge": "The absolute juiciest, most impactful insight or futuristic prediction from the news. Distill it into exactly 2-3 short, bold lines. (Strict limit: 250 characters max).",
   "the_deep_dive": "Extensive, novel details about the news that weren't mentioned above. Act as a comprehensive backgrounder. (Strict limit: 800 characters max)."
 }"""
 
@@ -244,61 +259,57 @@ JSON Schema:
         "qwen/qwen3-30b-a3b:free",                      # Qwen3 30B
     ]
 
-    # 1. Primary Model Attempts (Initial + 1 Retry)
-    for attempt in range(2):
-        if attempt > 0:
-            logger.info(f"Retrying primary model {primary_model} (attempt {attempt + 1}/2) after 3s delay...")
-            time.sleep(3)
-        try:
-            response = client.chat.completions.create(
-                model=primary_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg}
-                ],
-                timeout=12,
-            )
-            if not hasattr(response, 'choices') or not response.choices:
-                logger.warning(f"OpenRouter unexpected response: {response}")
-                raise ValueError("Invalid OpenRouter response structure")
-            content = response.choices[0].message.content.strip()
-            parsed = try_parse_json(content)
-            if parsed:
-                return parsed
-            else:
-                # Retry formatting via LLM if parsing failed
-                repaired = request_llm_repair(content, primary_model)
-                if repaired:
-                    return repaired
-        except Exception as e:
-            logger.warning(f"Primary model attempt {attempt + 1} failed for '{title}': {e}")
+    # 1. Primary Model Attempt (Single Try)
+    try:
+        response = await client.chat.completions.create(
+            model=primary_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg}
+            ],
+            timeout=12,
+        )
+        if not hasattr(response, 'choices') or not response.choices:
+            logger.warning(f"OpenRouter unexpected response: {response}")
+            raise ValueError("Invalid OpenRouter response structure")
+        content = response.choices[0].message.content.strip()
+        parsed = try_parse_json(content)
+        if parsed:
+            return parsed
+        else:
+            # Retry formatting via LLM if parsing failed
+            repaired = await request_llm_repair(content, primary_model)
+            if repaired:
+                return repaired
+    except Exception as e:
+        logger.warning(f"Primary model attempt failed for '{title}': {e}")
 
-    # 2. Backup Model Attempts (with openrouter/free first)
+    # 2. Sequential Backup Model Attempts
+    logger.info(f"Primary model failed. Attempting {len(backup_models)} backup models sequentially for '{title}'...")
+    
     for model_id in backup_models:
-        logger.info(f"Falling back to model {model_id} after 3s delay...")
-        time.sleep(3)
         try:
-            response = client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=model_id,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_msg}
                 ],
-                timeout=12,
+                timeout=15,
             )
-            if not hasattr(response, 'choices') or not response.choices:
-                logger.warning(f"OpenRouter unexpected response: {response}")
-                raise ValueError("Invalid OpenRouter response structure")
-            content = response.choices[0].message.content.strip()
-            parsed = try_parse_json(content)
-            if parsed:
-                return parsed
-            else:
-                repaired = request_llm_repair(content, model_id)
-                if repaired:
-                    return repaired
+            if hasattr(response, 'choices') and response.choices:
+                content = response.choices[0].message.content.strip()
+                parsed = try_parse_json(content)
+                if parsed:
+                    logger.info(f"Backup model '{model_id}' succeeded for '{title}'!")
+                    return parsed
+                else:
+                    repaired = await request_llm_repair(content, model_id)
+                    if repaired:
+                        logger.info(f"Backup model '{model_id}' succeeded after repair for '{title}'!")
+                        return repaired
         except Exception as e:
-            logger.warning(f"Backup model {model_id} failed for '{title}': {e}")
+            pass # Silently ignore individual backup failures to keep logs clean
 
     logger.error(f"All AI models exhausted for '{title}'.")
     return None
@@ -308,13 +319,19 @@ def strip_html(html_str: str) -> str:
     text = HTML_STRIP_RE.sub(' ', html_str)
     return " ".join(text.split())
 
-def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
+async def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
     logger.info(f"Fetching RSS feed: {feed_url} with {lookback_hours}h lookback")
     items = []
     try:
         # Pass custom User-Agent to prevent 403 Forbidden errors
         agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        parsed = feedparser.parse(feed_url, agent=agent)
+        session = await get_http_session()
+        async with session.get(feed_url, headers={"User-Agent": agent}, timeout=15) as resp:
+            content = await resp.text()
+            
+        # Parse XML concurrently to avoid blocking event loop
+        parsed = await asyncio.to_thread(feedparser.parse, content)
+        
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         for entry in parsed.entries:
             published = None
@@ -330,10 +347,10 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
             link = entry.get('link', '')
             
             raw_summary = entry.get('summary', '')
-            content = ""
+            content_val = ""
             if hasattr(entry, 'content') and entry.content:
-                content = entry.content[0].get('value', '')
-            full_html = raw_summary + " " + content
+                content_val = entry.content[0].get('value', '')
+            full_html = raw_summary + " " + content_val
             
             # Clean text using lightweight regex
             text_snippet = strip_html(full_html)[:1500]
@@ -351,17 +368,20 @@ def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
         logger.error(f"Error fetching RSS {feed_url}: {e}")
     return items
 
-def fetch_full_article_text(url: str) -> str:
+async def fetch_full_article_text(url: str) -> str:
     """Scrapes the full article text from the URL as a fallback."""
     logger.info(f"Attempting deep scrape for fallback text: {url}")
     try:
-        resp = _http_session.get(
+        session = await get_http_session()
+        async with session.get(
             url,
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
             timeout=10
-        )
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        ) as resp:
+            resp.raise_for_status()
+            text_content = await resp.text()
+            
+        soup = BeautifulSoup(text_content, 'html.parser')
         
         # Remove script and style elements
         for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
@@ -374,10 +394,10 @@ def fetch_full_article_text(url: str) -> str:
         logger.warning(f"Deep scrape failed for {url}: {e}")
         return ""
 
-def fetch_story_details(item: Dict) -> Optional[Dict]:
+async def fetch_story_details(item: Dict) -> Optional[Dict]:
     logger.info(f"AI Processing: {item['title']}")
     metadata = item.get('metadata', None)
-    structured_data = ai_summarize(item['title'], item['raw_text'], metadata=metadata)
+    structured_data = await ai_summarize(item['title'], item['raw_text'], metadata=metadata)
     
     # Clean headline & highlight for fallbacks
     clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
@@ -452,16 +472,16 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
     _cached_full_text = None
     _full_text_fetched = False
     
-    def get_full_text():
+    async def get_full_text():
         nonlocal _cached_full_text, _full_text_fetched
         if not _full_text_fetched:
-            _cached_full_text = fetch_full_article_text(item['url'])
+            _cached_full_text = await fetch_full_article_text(item['url'])
             _full_text_fetched = True
         return _cached_full_text
 
     # Core Breakdown fallback
     if is_empty_value(structured_data.get("core_breakdown")):
-        full_text = get_full_text()
+        full_text = await get_full_text()
         if full_text and len(full_text) > 100:
             snippet = full_text
             
@@ -486,7 +506,7 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
         structured_data["core_breakdown"] = core_text
 
     # Compute remaining text for The Edge and Deep Dive
-    full_text = get_full_text()
+    full_text = await get_full_text()
     if not full_text or len(full_text) < 100:
         full_text = item['raw_text']
         
@@ -540,31 +560,34 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
 
 HN_USER_AGENT = "AoE-Bot/2.0 (Ahead of Everyone Daily Digest)"
 
-def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
-    """Fetches top stories from Hacker News concurrently.
-    Returns items in the same dict format as fetch_rss_feed for compatibility."""
+async def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
+    """Fetches top stories from Hacker News concurrently."""
     logger.info(f"Fetching top {limit} stories from Hacker News API...")
     try:
-        resp = _http_session.get(
+        session = await get_http_session()
+        async with session.get(
             "https://hacker-news.firebaseio.com/v0/topstories.json",
             headers={"User-Agent": HN_USER_AGENT},
             timeout=10
-        )
-        resp.raise_for_status()
-        story_ids = resp.json()[:limit * 3]  # fetch extra to filter empty/non-story links
+        ) as resp:
+            resp.raise_for_status()
+            story_ids = await resp.json()
+            story_ids = story_ids[:limit * 3]
     except Exception as e:
         logger.error(f"Error fetching HN top story IDs: {e}")
         return []
 
     items = []
     
-    def fetch_single_story(sid):
+    async def fetch_single_story(sid):
         try:
-            detail = _http_session.get(
+            async with session.get(
                 f"https://hacker-news.firebaseio.com/v0/item/{sid}.json",
                 headers={"User-Agent": HN_USER_AGENT},
                 timeout=8
-            ).json()
+            ) as detail_resp:
+                detail = await detail_resp.json()
+                
             if not detail or detail.get('type') != 'story' or not detail.get('url'):
                 return None
 
@@ -597,82 +620,22 @@ def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
         return None
 
     # Fetch Hacker News details concurrently
-    max_workers = min(len(story_ids), 12)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        results = executor.map(fetch_single_story, story_ids)
-        
-    for res in results:
+    tasks = [asyncio.create_task(fetch_single_story(sid)) for sid in story_ids[:limit*3]]
+    for completed_task in asyncio.as_completed(tasks):
+        res = await completed_task
         if res:
             items.append(res)
             if len(items) >= limit:
                 break
+    
+    # Cancel remaining tasks
+    for t in tasks:
+        t.cancel()
 
     logger.info(f"Fetched {len(items)} stories from Hacker News.")
     return items
 
-# ─── Reddit JSON API ────────────────────────────────────────────────────────
 
-REDDIT_USER_AGENT = "windows:ahead_of_everyone_bot:v2.0 (by /u/AheadOfEveryone)"
-
-def fetch_reddit_top_stories(subreddits: List[str] = None, limit: int = 10) -> List[Dict]:
-    """Fetches top daily posts from specified subreddits using the public JSON API.
-    No authentication required. Returns items in the standard dict format."""
-    if subreddits is None:
-        subreddits = ["technology"]
-    logger.info(f"Fetching top Reddit posts from: {subreddits}")
-    items = []
-    
-    for sub in subreddits:
-        try:
-            resp = _http_session.get(
-                f"https://www.reddit.com/r/{sub}/top.json?t=day&limit={limit}",
-                headers={"User-Agent": REDDIT_USER_AGENT},
-                timeout=10
-            )
-            if resp.status_code == 429:
-                logger.warning(f"Reddit rate-limited on r/{sub}. Skipping.")
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            
-            for child in data.get('data', {}).get('children', []):
-                post = child.get('data', {})
-                if post.get('is_self', False):  # skip text-only self posts
-                    continue
-                    
-                title = post.get('title', '')
-                url = post.get('url', '')
-                score = post.get('score', 0)
-                comments = post.get('num_comments', 0)
-                selftext = post.get('selftext', '')
-                
-                raw_text = selftext[:1500] if selftext else title
-                if len(raw_text) < 50:
-                    raw_text = f"{title}. This post has {score} upvotes and {comments} comments on Reddit r/{sub}."
-
-                created_utc = post.get('created_utc')
-                published = datetime.fromtimestamp(created_utc, timezone.utc) if created_utc else None
-
-                items.append({
-                    "title": title,
-                    "url": url,
-                    "raw_text": raw_text[:1500],
-                    "published": published,
-                    "metadata": {
-                        "source": f"Reddit r/{sub}",
-                        "upvotes": score,
-                        "comments": comments,
-                        "sector": "tech"
-                    }
-                })
-        except Exception as e:
-            logger.error(f"Error fetching Reddit r/{sub}: {e}")
-        time.sleep(1)  # brief pause between subreddits
-
-    # Sort by engagement score descending
-    items.sort(key=lambda x: x.get('metadata', {}).get('upvotes', 0), reverse=True)
-    logger.info(f"Fetched {len(items)} stories from Reddit.")
-    return items
 
 # ─── Category-Specific RSS Feeds ────────────────────────────────────────────
 
@@ -693,21 +656,24 @@ CATEGORY_FEEDS = {
     ],
 }
 
-def fetch_category_rss(category: str, limit: int = 5) -> List[Dict]:
+async def fetch_category_rss(category: str, limit: int = 5) -> List[Dict]:
     """Fetches top stories for a specific essential sector using curated RSS feeds."""
     feeds = CATEGORY_FEEDS.get(category, [])
     if not feeds:
         return []
     
     items = []
-    for feed_url in feeds:
-        fetched = fetch_rss_feed(feed_url, lookback_hours=48)
-        for item in fetched:
-            item['metadata'] = {
-                "source": f"RSS ({category})",
-                "sector": category
-            }
-        items.extend(fetched)
+    tasks = [asyncio.create_task(fetch_rss_feed(feed_url, lookback_hours=48)) for feed_url in feeds]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for fetched in results:
+        if isinstance(fetched, list):
+            for item in fetched:
+                item['metadata'] = {
+                    "source": f"RSS ({category})",
+                    "sector": category
+                }
+            items.extend(fetched)
     
     # Deduplicate by title
     seen = set()
@@ -722,7 +688,7 @@ def fetch_category_rss(category: str, limit: int = 5) -> List[Dict]:
 
 # ─── Slot-Based Allocator ───────────────────────────────────────────────────
 
-def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dict]:
+async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dict]:
     """Omnichannel fetcher: pulls from RSS, Reddit, Hacker News, and sector feeds.
     Uses a slot-based allocator to guarantee balanced coverage across sectors.
     
@@ -743,100 +709,72 @@ def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dict]:
         "https://www.wired.com/feed/rss",
     ]
     
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        # Tech RSS
-        tech_future = executor.submit(
-            lambda: [item for url in tech_rss_feeds for item in fetch_rss_feed(url, 48)]
-        )
-        # Reddit
-        reddit_future = executor.submit(
-            lambda: fetch_reddit_top_stories(["technology", "science"], limit=8)
-        )
-        # Hacker News
-        hn_future = executor.submit(lambda: fetch_hn_top_stories(limit=8))
-        # Essential sectors
-        science_future = executor.submit(lambda: fetch_category_rss("science", 5))
-        medical_future = executor.submit(lambda: fetch_category_rss("medical", 5))
-        agri_future = executor.submit(lambda: fetch_category_rss("agriculture", 5))
-        weather_future = executor.submit(lambda: fetch_category_rss("weather", 5))
-    
-    # Collect results (with error handling)
-    try:
-        tech_rss_items = tech_future.result()
-        for item in tech_rss_items:
-            item.setdefault('metadata', {})['sector'] = 'tech'
-    except Exception as e:
-        logger.error(f"Tech RSS fetch failed: {e}")
-        tech_rss_items = []
-    
-    try:
-        reddit_items = reddit_future.result()
-    except Exception as e:
-        logger.error(f"Reddit fetch failed: {e}")
-        reddit_items = []
-    
-    try:
-        hn_items = hn_future.result()
-    except Exception as e:
-        logger.error(f"HN fetch failed: {e}")
-        hn_items = []
-    
-    try:
-        science_items = science_future.result()
-    except Exception as e:
-        logger.error(f"Science RSS fetch failed: {e}")
-        science_items = []
-    
-    try:
-        medical_items = medical_future.result()
-    except Exception as e:
-        logger.error(f"Medical RSS fetch failed: {e}")
-        medical_items = []
-    
-    try:
-        agri_items = agri_future.result()
-    except Exception as e:
-        logger.error(f"Agriculture RSS fetch failed: {e}")
-        agri_items = []
-    
-    try:
-        weather_items = weather_future.result()
-    except Exception as e:
-        logger.error(f"Weather RSS fetch failed: {e}")
-        weather_items = []
-    
-    # ── 2. Global dedup against registry ─────────────────────────────────
-    def dedup(items: List[Dict]) -> List[Dict]:
-        clean = []
+    async def fetch_tech_rss():
+        tasks = [asyncio.create_task(fetch_rss_feed(url, 48)) for url in tech_rss_feeds]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        items = []
+        for r in results:
+            if isinstance(r, list):
+                items.extend(r)
         for item in items:
-            if not is_duplicate_or_rehash(item['title'], item.get('url', ''), registry):
-                clean.append(item)
-        return clean
+            item.setdefault('metadata', {})['sector'] = 'tech'
+        return items
+
+    tech_future = asyncio.create_task(fetch_tech_rss())
+    hn_future = asyncio.create_task(fetch_hn_top_stories(limit=8))
+    science_future = asyncio.create_task(fetch_category_rss("science", 5))
+    medical_future = asyncio.create_task(fetch_category_rss("medical", 5))
+    agri_future = asyncio.create_task(fetch_category_rss("agriculture", 5))
+    weather_future = asyncio.create_task(fetch_category_rss("weather", 5))
+
+    results = await asyncio.gather(
+        tech_future,
+        hn_future,
+        science_future,
+        medical_future,
+        agri_future,
+        weather_future,
+        return_exceptions=True
+    )
     
-    # Social / trending pool (Reddit + HN sorted by engagement)
-    social_pool = dedup(reddit_items + hn_items)
+    tech_rss_items = results[0] if isinstance(results[0], list) else []
+    hn_items = results[1] if isinstance(results[1], list) else []
+    science_items = results[2] if isinstance(results[2], list) else []
+    medical_items = results[3] if isinstance(results[3], list) else []
+    agri_items = results[4] if isinstance(results[4], list) else []
+    weather_items = results[5] if isinstance(results[5], list) else []
+    reddit_items = []
+    
+    # ── 2. Deduplicate against Registry & Intra-batch ────────────────────
+    def process_pool(items: List[Dict]) -> List[Dict]:
+        filtered = []
+        for item in items:
+            if not is_duplicate_or_rehash(item['title'], item['url'], registry):
+                filtered.append(item)
+                # Add to registry instantly to prevent intra-batch dupes
+                registry.append({
+                    "url": item['url'],
+                    "title": item['title'],
+                    "token_set": set(WORD_TOKEN_RE.findall(item['title'].lower().strip()))
+                })
+        return filtered
+
+    social_pool = process_pool(reddit_items + hn_items)
     social_pool.sort(key=lambda x: x.get('metadata', {}).get('upvotes', 0), reverse=True)
     
-    tech_pool = dedup(tech_rss_items)
-    science_medical_pool = dedup(science_items + medical_items)
-    agri_weather_pool = dedup(agri_items + weather_items)
+    tech_pool = process_pool(tech_rss_items)
+    science_medical_pool = process_pool(science_items + medical_items)
+    agri_weather_pool = process_pool(agri_items + weather_items)
     
-    logger.info(f"Pool sizes after dedup — Social: {len(social_pool)}, Tech RSS: {len(tech_pool)}, "
-                f"Sci/Med: {len(science_medical_pool)}, Agri/Weather: {len(agri_weather_pool)}")
-    
-    # ── 3. Slot allocation ───────────────────────────────────────────────
+    # ── 3. Slot Allocator ────────────────────────────────────────────────
     selected_items = []
-    used_titles = set()
     
     def pick_from(pool: List[Dict]) -> Optional[Dict]:
-        for item in pool:
-            key = item['title'].lower().strip()
-            if key not in used_titles:
-                used_titles.add(key)
-                return item
+        if pool:
+            return pool.pop(0)
         return None
-    
-    # Slot 1: The Apex – highest-engagement social story
+
+    # Slot 1: The Apex
     apex = pick_from(social_pool)
     if apex:
         selected_items.append(apex)
@@ -877,31 +815,29 @@ def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dict]:
     stories = []
     processed_count = [0]
     
-    def process_item(idx_and_item):
-        idx, item = idx_and_item
+    async def process_item(idx, item):
         # Stagger requests slightly to avoid hitting aggressive instant rate limits
-        time.sleep(idx * 1.5)
-        res = fetch_story_details(item)
+        await asyncio.sleep(idx * 2.5)
+        res = await fetch_story_details(item)
         processed_count[0] += 1
         if progress_callback:
             progress = 30 + int((processed_count[0] / len(selected_items)) * 35)
             progress_callback("Writing Summaries", progress, f"Synthesized article {processed_count[0]} of {len(selected_items)}...")
         return res
 
-    max_workers = min(len(selected_items), 5)
-    if max_workers > 0:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = executor.map(process_item, enumerate(selected_items))
-        for res in results:
-            if res:
-                stories.append(res)
+    tasks = [asyncio.create_task(process_item(idx, item)) for idx, item in enumerate(selected_items)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for res in results:
+        if isinstance(res, dict):
+            stories.append(res)
                 
     if progress_callback:
         progress_callback("Writing Summaries", 65, "AI Summarization completed successfully.", mark_done="Writing Summaries")
     
     return stories
 
-def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None) -> List[Dict]:
+async def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None) -> List[Dict]:
     """Scrapes Google News RSS for a specific topic, bypassing the anti-rehash registry."""
     logger.info(f"Fetching targeted news for query: {query}")
     if progress_callback:
@@ -911,7 +847,7 @@ def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None) -> L
     encoded_query = urllib.parse.quote(query)
     rss_feed = f"https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en"
     
-    raw_items = fetch_rss_feed(rss_feed, lookback_hours=72)
+    raw_items = await fetch_rss_feed(rss_feed, lookback_hours=72)
     
     # Deduplicate by title
     seen = set()
@@ -929,24 +865,22 @@ def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None) -> L
     stories = []
     processed_count = [0]
     
-    def process_item(idx_and_item):
-        idx, item = idx_and_item
+    async def process_item(idx, item):
         # Stagger requests slightly to avoid hitting aggressive instant rate limits
-        time.sleep(idx * 1.5)
-        res = fetch_story_details(item)
+        await asyncio.sleep(idx * 2.5)
+        res = await fetch_story_details(item)
         processed_count[0] += 1
         if progress_callback:
             progress = 30 + int((processed_count[0] / len(selected_items)) * 35)
             progress_callback("Writing Summaries", progress, f"Synthesized article {processed_count[0]} of {len(selected_items)}...")
         return res
 
-    max_workers = min(len(selected_items), 5)
-    if max_workers > 0:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = executor.map(process_item, enumerate(selected_items))
-        for res in results:
-            if res:
-                stories.append(res)
+    tasks = [asyncio.create_task(process_item(idx, item)) for idx, item in enumerate(selected_items)]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for res in results:
+        if isinstance(res, dict):
+            stories.append(res)
                 
     if progress_callback:
         progress_callback("Writing Summaries", 65, "AI Summarization completed successfully.", mark_done="Writing Summaries")

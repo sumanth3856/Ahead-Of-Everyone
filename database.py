@@ -21,7 +21,7 @@ _pool = None
 _pool_lock = asyncio.Lock()
 
 # Cache version to automatically invalidate older caches on design updates
-CACHE_VERSION = "v3"
+CACHE_VERSION = "v4"
 
 # Global flag to track if the pgvector/topic_embedding column is supported and available in the database
 HAS_VECTOR_COLUMN = True
@@ -116,6 +116,9 @@ async def init_db():
 
 async def execute_with_retry(query: str, *args, is_fetch: bool = False, is_fetchrow: bool = False):
     """Executes a query or fetches rows with retries and auto-reconnection on transient errors."""
+    if not DATABASE_URL:
+        raise asyncpg.exceptions.InterfaceError("DATABASE_URL is not set. Database remains offline.")
+        
     last_err = None
     for attempt in range(3):
         try:
@@ -178,6 +181,15 @@ async def remove_subscriber(chat_id: int) -> bool:
         logger.error(f"Error removing subscriber {chat_id}: {e}")
         return False
 
+async def is_subscriber(chat_id: int) -> bool:
+    """Check if a user is subscribed."""
+    try:
+        rows = await execute_with_retry("SELECT 1 FROM subscribers WHERE chat_id = $1", chat_id, is_fetch=True)
+        return len(rows) > 0
+    except Exception as e:
+        logger.error(f"Error checking subscriber {chat_id}: {e}")
+        return False
+
 async def get_all_subscribers() -> list[int]:
     try:
         rows = await execute_with_retry("SELECT chat_id FROM subscribers", is_fetch=True)
@@ -204,7 +216,13 @@ def get_current_ist_date():
     ist = pytz.timezone('Asia/Kolkata')
     return datetime.now(ist).date()
 
+# Local memory cache to prevent redundant HF API calls for identical texts
+_hf_embedding_cache = {}
+
 async def get_embedding(text: str) -> list[float] | None:
+    if text in _hf_embedding_cache:
+        return _hf_embedding_cache[text]
+        
     url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
     headers = {}
     hf_token = os.getenv("HF_TOKEN")
@@ -214,7 +232,11 @@ async def get_embedding(text: str) -> list[float] | None:
     for attempt in range(3):
         try:
             session = await get_http_session()
-            async with session.post(url, headers=headers, json={"inputs": text}, timeout=15) as response:
+            payload = {
+                "inputs": text,
+                "options": {"wait_for_model": True, "use_cache": True}
+            }
+            async with session.post(url, headers=headers, json=payload, timeout=20) as response:
                 if response.status == 200:
                     data = await response.json()
                     # Check if Hugging Face returned an error indicating the model is loading
@@ -227,8 +249,10 @@ async def get_embedding(text: str) -> list[float] | None:
                             continue
                     
                     if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                        _hf_embedding_cache[text] = data[0]
                         return data[0]
                     elif isinstance(data, list) and len(data) > 0:
+                        _hf_embedding_cache[text] = data
                         return data
                 elif response.status in (503, 429):
                     logger.warning(f"HuggingFace transient status {response.status} (attempt {attempt + 1}/3). Retrying after 3s...")

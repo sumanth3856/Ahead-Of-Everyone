@@ -16,7 +16,6 @@ WHITE = (255, 255, 255)        # Crisp White
 CAT_CLEAN_RE = re.compile(r'^[\d\s\.]+')
 
 import urllib.request
-import time
 
 MONTSERRAT_REG_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Regular.ttf"
 MONTSERRAT_BOLD_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf"
@@ -275,10 +274,10 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
         pdf.set_xy(12, pdf.get_y() + 2)
         pdf.set_font("Montserrat", "", 12) # Simulating weight with size
         pdf.set_text_color(*BLACK)
-        brief = story.get("the_brief", "")
+        brief = story.get("radar_brief", story.get("the_brief", ""))
         # Hard truncate to ensure it fits (max ~130 chars for TOC)
         if len(brief) > 130: brief = brief[:127] + "..."
-        pdf.multi_cell(186, 5.5, brief, align="L")
+        pdf.multi_cell(186, 6, brief, align="L")
         
         y_ptr = pdf.get_y() + 6
         
@@ -326,7 +325,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_text_color(*BLACK)
     # Asymmetric indent for body text
     pdf.set_x(24)
-    pdf.multi_cell(174, 6.5, story.get("the_brief", ""), align="L")
+    pdf.multi_cell(174, 6.5, story.get("the_brief", ""), align="J")
     
     pdf.set_y(pdf.get_y() + 10)
     
@@ -344,7 +343,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_x(24)
     pdf.set_font("Montserrat", "", 11)
     pdf.set_text_color(*BLACK)
-    pdf.multi_cell(174, 6.5, core_text, align="L")
+    pdf.multi_cell(174, 6.5, core_text, align="J")
         
     if pdf.get_y() > 220:
         pdf.add_page()
@@ -369,13 +368,13 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_xy(18, wy + 10)
     pdf.set_font("Montserrat", "B", 14)
     pdf.set_text_color(*BLACK)
-    pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="L")
+    pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="J")
     
     pdf.set_y(pdf.get_y() + 6)
     
     # T H E   D E E P   D I V E
     wy = pdf.get_y()
-    leftover_height = 297 - 12 - wy
+    leftover_height = 275 - wy
     
     # If there's barely any space left, skip it to prevent formatting errors
     if leftover_height < 10:
@@ -385,9 +384,6 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_font("Montserrat", "I", 10)
     pdf.set_text_color(*BRAND_ACCENT)
     pdf.set_fill_color(248, 248, 250) # Very subtle gray/purple tint
-    
-    # Draw the dynamic background box to fill exactly the remaining space
-    pdf.rect(12, wy, 186, leftover_height, 'F')
     
     raw_deep_dive = story.get('the_deep_dive', '')
     deep_dive_text = f" DEEP DIVE: {raw_deep_dive}"
@@ -400,9 +396,9 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     if len(deep_dive_text) > max_chars:
         deep_dive_text = deep_dive_text[:max_chars - 3] + "..."
         
-    # Render text inside the box
+    # Render text with a dynamic background box that wraps its height
     pdf.set_xy(12, wy)
-    pdf.multi_cell(186, 7, deep_dive_text, align="L", fill=False)
+    pdf.multi_cell(186, 7, deep_dive_text, align="J", fill=True)
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
     pdf.suppress_header = False
@@ -485,7 +481,7 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.cell(0, 10, text, align="C", ln=1)
 
     # Custom Conclusion Footer
-    pdf.set_y(270)
+    pdf.set_y(275)
     pdf.set_x(12)
     pdf.set_font("Montserrat", "B", 12)
     pdf.set_text_color(*WHITE)

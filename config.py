@@ -23,9 +23,11 @@ BRAND_NAME = "Ahead of Everyone"
 TAGLINE = "Innovating the Future, Today."
 COPYRIGHT = "© 2026 Ahead of Everyone. All Rights Reserved."
 
+import os
+
 # OpenRouter / AI Settings
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = "openrouter/free"  # Meta-router that automatically selects a working free model
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")  # Meta-router that automatically selects a working free model
 
 # Color Palette (Luxury Slate & Neon Green)
 COLOR_DARK = (10, 15, 29)        
