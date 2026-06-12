@@ -374,13 +374,35 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_y(pdf.get_y() + 6)
     
     # T H E   D E E P   D I V E
+    wy = pdf.get_y()
+    leftover_height = 297 - 12 - wy
+    
+    # If there's barely any space left, skip it to prevent formatting errors
+    if leftover_height < 10:
+        return
+        
     pdf.set_x(12)
     pdf.set_font("Montserrat", "I", 10)
     pdf.set_text_color(*BRAND_ACCENT)
     pdf.set_fill_color(248, 248, 250) # Very subtle gray/purple tint
-    deep_dive_text = f" DEEP DIVE: {story.get('the_deep_dive', '')}"
-    # Left and Right padding simulated by adding space
-    pdf.multi_cell(186, 7, deep_dive_text, align="L", fill=True)
+    
+    # Draw the dynamic background box to fill exactly the remaining space
+    pdf.rect(12, wy, 186, leftover_height, 'F')
+    
+    raw_deep_dive = story.get('the_deep_dive', '')
+    deep_dive_text = f" DEEP DIVE: {raw_deep_dive}"
+    
+    # Calculate how much text can fit
+    # Line height is 7mm. Width is 186mm. ~110 chars fit on one line at 10pt.
+    max_lines = int(leftover_height / 7)
+    max_chars = max_lines * 105  # slightly conservative
+    
+    if len(deep_dive_text) > max_chars:
+        deep_dive_text = deep_dive_text[:max_chars - 3] + "..."
+        
+    # Render text inside the box
+    pdf.set_xy(12, wy)
+    pdf.multi_cell(186, 7, deep_dive_text, align="L", fill=False)
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
     pdf.suppress_header = False

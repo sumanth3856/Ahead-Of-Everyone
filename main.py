@@ -1,5 +1,8 @@
 import os
 import logging
+import json
+import time
+import re
 from dotenv import load_dotenv
 
 # Initialize config/logging
@@ -29,9 +32,42 @@ def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
         logger.error(f"Error during latest digest generation: {e}", exc_info=True)
         return None
 
+CACHE_FILE = "query_cache.json"
+CACHE_TTL = 24 * 3600  # 24 hours
+
+def load_query_cache() -> dict:
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load query cache: {e}")
+    return {}
+
+def save_query_cache(cache: dict) -> None:
+    try:
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save query cache: {e}")
+
 def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str | None:
     logger.info(f"Generating targeted digest for: {query}")
     try:
+        cache = load_query_cache()
+        # Normalize: exact match only (case-insensitive, strip punctuation/spaces)
+        norm_query = re.sub(r'[^\w\s]', '', query.lower()).replace(' ', '')
+        
+        if norm_query in cache:
+            entry = cache[norm_query]
+            if time.time() - entry["timestamp"] < CACHE_TTL:
+                pdf_filename = entry["filename"]
+                if os.path.exists(pdf_filename):
+                    logger.info(f"Cache hit! Returning existing PDF for '{query}'.")
+                    if progress_callback:
+                        progress_callback("Cache Hit", 100, f"Found recently generated report for '{query}'.", mark_done="Delivering")
+                    return pdf_filename
+                    
         if progress_callback:
             progress_callback("Finding Stories", 5, f"Scraping news feeds for '{query}'...")
         stories = fetch_targeted_news(query, limit, progress_callback)
@@ -39,6 +75,13 @@ def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
             return None
+            
+        cache[norm_query] = {
+            "filename": pdf_filename,
+            "timestamp": time.time()
+        }
+        save_query_cache(cache)
+        
         return pdf_filename
     except Exception as e:
         logger.error(f"Error during targeted digest generation: {e}", exc_info=True)

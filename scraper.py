@@ -108,7 +108,11 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
         return False
         
     for item in registry:
-        words_old = set(WORD_TOKEN_RE.findall(item.get('title', '').lower().strip()))
+        # Optimization: Use precomputed token set if available to avoid O(M*N) regex executions
+        if 'token_set' not in item:
+            item['token_set'] = set(WORD_TOKEN_RE.findall(item.get('title', '').lower().strip()))
+        words_old = item['token_set']
+        
         intersection = words_new.intersection(words_old)
         union = words_new.union(words_old)
         if union:
@@ -212,9 +216,9 @@ JSON Schema:
   "headline": "An eye-catching, scroll-stopping headline that rephrases the original to hook the reader",
   "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline.",
   "the_brief": "A dense 2-sentence paragraph answering Who, What, When, Where, and Why. (Strict limit: 250 characters max).",
-  "core_breakdown": "A tightly woven mini-paragraph of facts (3 sentences max). Each sentence must contain highly specific details (metrics, technology names, specific mechanisms) rather than generic fluff. (Strict limit: 250 characters max).",
-  "the_edge": "A blend of a journalistic hook and a futuristic prediction. Make it bold and attention-grabbing. (Strict limit: 120 characters max).",
-  "the_deep_dive": "A short, provocative question or unresolved mystery about the topic that leaves the user curious. (Strict limit: 150 characters max)."
+  "core_breakdown": "A tightly woven detailed paragraph of facts (up to 7 sentences). Each sentence must contain highly specific details (metrics, technology names, specific mechanisms) rather than generic fluff. (Strict limit: 600 characters max).",
+  "the_edge": "A detailed paragraph blending analytical hook and futuristic prediction. Make it bold and informative. (Strict limit: 350 characters max).",
+  "the_deep_dive": "Extensive, novel details about the news that weren't mentioned above. Act as a comprehensive backgrounder. (Strict limit: 800 characters max)."
 }"""
 
     # Build user message with social context if available
@@ -375,14 +379,60 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
     metadata = item.get('metadata', None)
     structured_data = ai_summarize(item['title'], item['raw_text'], metadata=metadata)
     
+    # Clean headline & highlight for fallbacks
+    clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
+    highlight = clean_headline.split()[0] if clean_headline else "NEWS"
+    
+    # Helper to check if a value is empty or purely quotes/whitespace
+    def is_empty_value(val) -> bool:
+        if val is None:
+            return True
+        s = str(val).strip()
+        # Checks for empty string, quotes, or whitespace
+        return not s or s in ('""', "''", '""""', "''''", '`""`', "`''`")
+
     if not structured_data:
         logger.warning(f"Using fallback summary for '{item['title']}' due to AI failure.")
-        
-        # Clean title by removing source suffix (e.g., " - TechCrunch")
-        clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
-        highlight = clean_headline.split()[0] if clean_headline else "NEWS"
-        
-        # Clean and extract first 1-2 sentences of raw text up to 160 chars
+        structured_data = {}
+
+    # Category fallback
+    if is_empty_value(structured_data.get("category")):
+        sector = (metadata or {}).get('sector', '')
+        lower_title = clean_headline.lower()
+        if sector == 'science':
+            structured_data["category"] = "03 . SECTOR . SCIENCE"
+        elif sector == 'medical':
+            structured_data["category"] = "04 . SECTOR . MEDICAL & PHARMA"
+        elif sector == 'agriculture':
+            structured_data["category"] = "05 . SECTOR . AGRICULTURE"
+        elif sector == 'weather':
+            structured_data["category"] = "05 . SECTOR . CLIMATE & WEATHER"
+        elif "ai" in lower_title or "artificial intelligence" in lower_title or "model" in lower_title:
+            structured_data["category"] = "02 . FEATURE . AI & RESEARCH"
+        elif "cyber" in lower_title or "hack" in lower_title or "security" in lower_title or "vulnerability" in lower_title:
+            structured_data["category"] = "03 . ALERT . CYBERSECURITY"
+        elif "policy" in lower_title or "court" in lower_title or "ban" in lower_title or "regulation" in lower_title:
+            structured_data["category"] = "04 . NEWS . REGULATION"
+        else:
+            structured_data["category"] = "05 . NEWS . TECH POLICY"
+    else:
+        # Strip outer quotes if any
+        structured_data["category"] = str(structured_data["category"]).strip().strip('\'"')
+
+    # Headline fallback
+    if is_empty_value(structured_data.get("headline")):
+        structured_data["headline"] = clean_headline
+    else:
+        structured_data["headline"] = str(structured_data["headline"]).strip().strip('\'"')
+
+    # Headline Highlight fallback
+    if is_empty_value(structured_data.get("headline_highlight")):
+        structured_data["headline_highlight"] = highlight
+    else:
+        structured_data["headline_highlight"] = str(structured_data["headline_highlight"]).strip().strip('\'"')
+
+    # The Brief fallback
+    if is_empty_value(structured_data.get("the_brief")):
         snippet = item['raw_text'].strip()
         sentences = re.split(r'(?<=[.!?])\s+', snippet)
         brief = ""
@@ -394,51 +444,93 @@ def fetch_story_details(item: Dict) -> Optional[Dict]:
         brief = brief.strip()
         if not brief:
             brief = snippet[:157] + "..."
-            
-        # Use sector from metadata if available, otherwise guess from title
-        sector = (metadata or {}).get('sector', '')
-        lower_title = clean_headline.lower()
-        if sector == 'science':
-            category = "03 . SECTOR . SCIENCE"
-        elif sector == 'medical':
-            category = "04 . SECTOR . MEDICAL & PHARMA"
-        elif sector == 'agriculture':
-            category = "05 . SECTOR . AGRICULTURE"
-        elif sector == 'weather':
-            category = "05 . SECTOR . CLIMATE & WEATHER"
-        elif "ai" in lower_title or "artificial intelligence" in lower_title or "model" in lower_title:
-            category = "02 . FEATURE . AI & RESEARCH"
-        elif "cyber" in lower_title or "hack" in lower_title or "security" in lower_title or "vulnerability" in lower_title:
-            category = "03 . ALERT . CYBERSECURITY"
-        elif "policy" in lower_title or "court" in lower_title or "ban" in lower_title or "regulation" in lower_title:
-            category = "04 . NEWS . REGULATION"
-        else:
-            category = "05 . NEWS . TECH POLICY"
+        structured_data["the_brief"] = brief
+    else:
+        structured_data["the_brief"] = str(structured_data["the_brief"]).strip().strip('\'"')
 
-        # Try to deep scrape the full article
-        full_text = fetch_full_article_text(item['url'])
+    # Cache full article text to avoid redundant network I/O during fallbacks
+    _cached_full_text = None
+    _full_text_fetched = False
+    
+    def get_full_text():
+        nonlocal _cached_full_text, _full_text_fetched
+        if not _full_text_fetched:
+            _cached_full_text = fetch_full_article_text(item['url'])
+            _full_text_fetched = True
+        return _cached_full_text
+
+    # Core Breakdown fallback
+    if is_empty_value(structured_data.get("core_breakdown")):
+        full_text = get_full_text()
         if full_text and len(full_text) > 100:
-            core_text = full_text
+            snippet = full_text
+            
+        brief = structured_data["the_brief"]
+        if snippet.startswith(brief):
+            remaining_text = snippet[len(brief):].strip()
         else:
-            core_text = snippet[len(brief):].strip()
+            remaining_text = snippet
             
-        if not core_text:
-            core_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
+        if not remaining_text:
+            remaining_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
             
-        # Clean up core_text for layout
-        core_text = " ".join(core_text.split())
-        if len(core_text) > 240:
-            core_text = core_text[:237] + "..."
+        core_text = " ".join(remaining_text.split())
+        if len(core_text) > 600:
+            core_text = core_text[:597] + "..."
+        structured_data["core_breakdown"] = core_text
+    else:
+        # Strip quotes and normalize whitespace
+        core_text = " ".join(str(structured_data["core_breakdown"]).strip().strip('\'"').split())
+        if len(core_text) > 600:
+            core_text = core_text[:597] + "..."
+        structured_data["core_breakdown"] = core_text
 
-        structured_data = {
-            "category": category,
-            "headline": clean_headline,
-            "headline_highlight": highlight,
-            "the_brief": brief,
-            "core_breakdown": core_text,
-            "the_edge": "A critical industry update to watch as developments unfold.",
-            "the_deep_dive": "Explore the full coverage via the attached source link."
-        }
+    # Compute remaining text for The Edge and Deep Dive
+    full_text = get_full_text()
+    if not full_text or len(full_text) < 100:
+        full_text = item['raw_text']
+        
+    brief = structured_data.get("the_brief", "")
+    core = structured_data.get("core_breakdown", "").replace("...", "")
+    
+    # Try to find where core ends
+    idx = full_text.find(core)
+    if idx != -1:
+        leftover_text = full_text[idx + len(core):].strip()
+    else:
+        leftover_text = full_text[len(brief) + len(core):].strip()
+
+    # The Edge fallback
+    if is_empty_value(structured_data.get("the_edge")):
+        if leftover_text:
+            edge_text = " ".join(leftover_text.split())
+            if len(edge_text) > 350:
+                edge_text = edge_text[:347] + "..."
+            structured_data["the_edge"] = edge_text
+        else:
+            structured_data["the_edge"] = "A critical industry update to watch as developments unfold."
+    else:
+        structured_data["the_edge"] = str(structured_data["the_edge"]).strip().strip('\'"')
+
+    # Update leftover_text for Deep Dive
+    edge_str = structured_data.get("the_edge", "").replace("...", "")
+    idx = leftover_text.find(edge_str)
+    if idx != -1:
+        deep_leftover = leftover_text[idx + len(edge_str):].strip()
+    else:
+        deep_leftover = leftover_text[len(edge_str):].strip()
+
+    # The Deep Dive fallback
+    if is_empty_value(structured_data.get("the_deep_dive")):
+        if deep_leftover:
+            deep_text = " ".join(deep_leftover.split())
+            if len(deep_text) > 800:
+                deep_text = deep_text[:797] + "..."
+            structured_data["the_deep_dive"] = deep_text
+        else:
+            structured_data["the_deep_dive"] = "Explore the full coverage via the attached source link."
+    else:
+        structured_data["the_deep_dive"] = str(structured_data["the_deep_dive"]).strip().strip('\'"')
         
     structured_data['url'] = item['url']
     structured_data['original_title'] = item['title']
