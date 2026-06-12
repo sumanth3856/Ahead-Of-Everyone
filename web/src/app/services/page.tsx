@@ -37,7 +37,7 @@ export default function ServicesPage() {
               </li>
             ))}
           </ul>
-          <Link href="https://t.me/AheadOfEveryoneBot" className="w-full py-4 rounded-xl bg-brand text-white text-center font-bold tracking-widest uppercase hover:bg-brand-light bg-glow transition-all">
+          <Link href="https://t.me/aheadofeveryone_bot" className="w-full py-4 rounded-xl bg-brand text-white text-center font-bold tracking-widest uppercase hover:bg-brand-light bg-glow transition-all">
             Initialize
           </Link>
         </div>
