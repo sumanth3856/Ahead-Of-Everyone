@@ -10,11 +10,13 @@ from telegram_client import send_pdf_to_telegram
 
 logger = logging.getLogger(__name__)
 
-def generate_latest_digest(limit=5) -> str | None:
+def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
     logger.info("Generating latest digest...")
     try:
-        stories = fetch_dynamic_news(limit)
-        pdf_filename = generate_digest_pdf(stories)
+        if progress_callback:
+            progress_callback("Finding Stories", 5, "Connecting to news feeds to fetch daily articles...")
+        stories = fetch_dynamic_news(limit, progress_callback)
+        pdf_filename = generate_digest_pdf(stories, progress_callback=progress_callback)
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
             return None
@@ -27,11 +29,13 @@ def generate_latest_digest(limit=5) -> str | None:
         logger.error(f"Error during latest digest generation: {e}", exc_info=True)
         return None
 
-def generate_targeted_digest(query: str, limit=5) -> str | None:
+def generate_targeted_digest(query: str, limit=5, progress_callback=None) -> str | None:
     logger.info(f"Generating targeted digest for: {query}")
     try:
-        stories = fetch_targeted_news(query, limit)
-        pdf_filename = generate_digest_pdf(stories, custom_topic=query)
+        if progress_callback:
+            progress_callback("Finding Stories", 5, f"Scraping news feeds for '{query}'...")
+        stories = fetch_targeted_news(query, limit, progress_callback)
+        pdf_filename = generate_digest_pdf(stories, custom_topic=query, progress_callback=progress_callback)
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
             return None

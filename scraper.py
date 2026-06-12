@@ -233,8 +233,8 @@ JSON Schema:
 
     primary_model = config.OPENROUTER_MODEL
     backup_models = [
-        "openrouter/free",                              # Auto-routes to any available free model
         "meta-llama/llama-3.3-70b-instruct:free",       # Llama 3.3 70B (confirmed June 2026)
+        "openrouter/free",                              # Auto-routes to any available free model
         "deepseek/deepseek-r1-distill-llama-70b:free",  # DeepSeek R1 Distill
         "qwen/qwen3-30b-a3b:free",                      # Qwen3 30B
     ]
@@ -593,7 +593,7 @@ def fetch_category_rss(category: str, limit: int = 5) -> List[Dict]:
 
 # ─── Slot-Based Allocator ───────────────────────────────────────────────────
 
-def fetch_dynamic_news(limit: int = 5) -> List[Dict]:
+def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dict]:
     """Omnichannel fetcher: pulls from RSS, Reddit, Hacker News, and sector feeds.
     Uses a slot-based allocator to guarantee balanced coverage across sectors.
     
@@ -741,20 +741,42 @@ def fetch_dynamic_news(limit: int = 5) -> List[Dict]:
             break  # all pools exhausted
     
     logger.info(f"Slot allocator selected {len(selected_items)} stories for AI processing.")
+    if progress_callback:
+        progress_callback("Writing Summaries", 30, f"Selected {len(selected_items)} articles for AI summarization...")
     
     # ── 4. AI Processing ─────────────────────────────────────────────────
     stories = []
-    for item in selected_items:
+    processed_count = [0]
+    
+    def process_item(idx_and_item):
+        idx, item = idx_and_item
+        # Stagger requests slightly to avoid hitting aggressive instant rate limits
+        time.sleep(idx * 1.5)
         res = fetch_story_details(item)
-        if res:
-            stories.append(res)
-        time.sleep(4)  # respect free-tier rate limits
+        processed_count[0] += 1
+        if progress_callback:
+            progress = 30 + int((processed_count[0] / len(selected_items)) * 35)
+            progress_callback("Writing Summaries", progress, f"Synthesized article {processed_count[0]} of {len(selected_items)}...")
+        return res
+
+    max_workers = min(len(selected_items), 5)
+    if max_workers > 0:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = executor.map(process_item, enumerate(selected_items))
+        for res in results:
+            if res:
+                stories.append(res)
+                
+    if progress_callback:
+        progress_callback("Writing Summaries", 65, "AI Summarization completed successfully.", mark_done="Writing Summaries")
     
     return stories
 
-def fetch_targeted_news(query: str, limit: int = 5) -> List[Dict]:
+def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None) -> List[Dict]:
     """Scrapes Google News RSS for a specific topic, bypassing the anti-rehash registry."""
     logger.info(f"Fetching targeted news for query: {query}")
+    if progress_callback:
+        progress_callback("Finding Stories", 15, f"Searching the web for '{query}'...")
     
     # URL encode query safely
     encoded_query = urllib.parse.quote(query)
@@ -772,12 +794,32 @@ def fetch_targeted_news(query: str, limit: int = 5) -> List[Dict]:
             
     selected_items = unique_items[:limit]
     logger.info(f"Selected {len(selected_items)} targeted stories for AI processing.")
+    if progress_callback:
+        progress_callback("Writing Summaries", 30, f"Selected {len(selected_items)} articles for AI summarization...", mark_done="Finding Stories")
     
     stories = []
-    for item in selected_items:
+    processed_count = [0]
+    
+    def process_item(idx_and_item):
+        idx, item = idx_and_item
+        # Stagger requests slightly to avoid hitting aggressive instant rate limits
+        time.sleep(idx * 1.5)
         res = fetch_story_details(item)
-        if res:
-            stories.append(res)
-        time.sleep(4)
+        processed_count[0] += 1
+        if progress_callback:
+            progress = 30 + int((processed_count[0] / len(selected_items)) * 35)
+            progress_callback("Writing Summaries", progress, f"Synthesized article {processed_count[0]} of {len(selected_items)}...")
+        return res
+
+    max_workers = min(len(selected_items), 5)
+    if max_workers > 0:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = executor.map(process_item, enumerate(selected_items))
+        for res in results:
+            if res:
+                stories.append(res)
+                
+    if progress_callback:
+        progress_callback("Writing Summaries", 65, "AI Summarization completed successfully.", mark_done="Writing Summaries")
         
     return stories

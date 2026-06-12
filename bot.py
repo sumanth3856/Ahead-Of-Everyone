@@ -97,44 +97,39 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     welcome_text, reply_markup = get_main_menu(first_name)
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
-async def update_loading_message(message, context, topic=None) -> None:
-    """Periodically update the loading message and trigger active chat actions to keep the user engaged."""
-    phases = [
-        {"name": "Finding Stories", "progress": 15, "detail": "🌐 Connecting to news outlets..."},
-        {"name": "Finding Stories", "progress": 25, "detail": "🔍 Searching the web for the latest updates..."},
-        {"name": "Writing Summaries", "progress": 40, "detail": "✂️ Sorting through stories to pick the best ones..."},
-        {"name": "Writing Summaries", "progress": 55, "detail": "✍️ Writing clear summaries and key highlights..."},
-        {"name": "Creating PDF", "progress": 70, "detail": "🎨 Formatting the pages into a clean magazine layout..."},
-        {"name": "Creating PDF", "progress": 85, "detail": "✨ Putting the final touches on your newsletter..."},
-        {"name": "Delivering", "progress": 95, "detail": "🚀 Sending the PDF file straight to your chat..."}
-    ]
-    
-    idx = 0
+async def update_loading_message(message, context, progress_state, topic=None) -> None:
+    """Periodically update the loading message based on the real-time progress state from the backend logic."""
     topic_str = f" about *{topic}*" if topic else ""
     chat_id = message.chat_id
     
-    # Emojis that change on each tick to create an animated feel
+    # Animated emojis that cycle on each update to show the bot is alive
     ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️"]
+    idx = 0
     
     while True:
         try:
-            # Trigger active chat action status (lasts ~5 seconds in Telegram client)
-            action = "upload_document" if idx >= 4 else "typing"
+            # Trigger active chat action status
+            progress = progress_state.get("progress", 0)
+            action = "upload_document" if progress >= 70 else "typing"
             try:
                 await context.bot.send_chat_action(chat_id=chat_id, action=action)
             except Exception:
                 pass
                 
-            await asyncio.sleep(8)
-            current = phases[idx % len(phases)]
+            phase = progress_state.get("phase", "Finding Stories")
+            detail = progress_state.get("detail", "🌐 Initializing request...")
+            done_phases = progress_state.get("done_phases", set())
+            
             tick_emoji = ticker_emojis[idx % len(ticker_emojis)]
+            idx += 1
             
-            p1_stat = "✅ Done" if idx >= 2 else f"{tick_emoji} Working..."
-            p2_stat = "✅ Done" if idx >= 4 else (f"{tick_emoji} Working..." if idx >= 2 else "⏳ Waiting")
-            p3_stat = "✅ Done" if idx >= 6 else (f"{tick_emoji} Working..." if idx >= 4 else "⏳ Waiting")
-            p4_stat = "✅ Done" if idx >= 7 else (f"{tick_emoji} Working..." if idx >= 6 else "⏳ Waiting")
+            # Phase statuses synchronized with actual pipeline progression
+            p1_stat = "✅ Done" if "Finding Stories" in done_phases else (f"{tick_emoji} Working..." if phase == "Finding Stories" else "⏳ Waiting")
+            p2_stat = "✅ Done" if "Writing Summaries" in done_phases else (f"{tick_emoji} Working..." if phase == "Writing Summaries" else "⏳ Waiting")
+            p3_stat = "✅ Done" if "Creating PDF" in done_phases else (f"{tick_emoji} Working..." if phase == "Creating PDF" else "⏳ Waiting")
+            p4_stat = "✅ Done" if "Delivering" in done_phases else (f"{tick_emoji} Working..." if phase == "Delivering" else "⏳ Waiting")
             
-            filled_length = int(current["progress"] / 5)
+            filled_length = int(progress / 5)
             gauge = "█" * filled_length + "░" * (20 - filled_length)
             
             text = (
@@ -145,16 +140,24 @@ async def update_loading_message(message, context, topic=None) -> None:
                 f"🎨 *Creating PDF:*       {p3_stat}\n"
                 f"🚀 *Delivering:*         {p4_stat}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"{current['detail']}\n\n"
-                f"`[{gauge}]`  *{current['progress']}%*\n\n"
+                f"{detail}\n\n"
+                f"`[{gauge}]`  *{progress}%*\n\n"
                 f"⏳ Fetching custom news{topic_str}. Just a moment!"
             )
-            await message.edit_text(text=text, parse_mode="Markdown")
-            idx += 1
+            
+            try:
+                await message.edit_text(text=text, parse_mode="Markdown")
+            except Exception as edit_err:
+                # Suppress "Message is not modified" spam
+                if "not modified" not in str(edit_err).lower():
+                    logger.warning(f"Failed to edit progress message: {edit_err}")
+            
+            await asyncio.sleep(2)
         except asyncio.CancelledError:
             break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error in update_loading_message: {e}")
+            await asyncio.sleep(2)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -189,15 +192,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             except Exception as e:
                 logger.warning(f"Failed to send cached file_id, generating fresh: {e}")
                 
+        progress_state = {
+            "phase": "Finding Stories",
+            "progress": 0,
+            "detail": "🌐 Initializing request...",
+            "done_phases": set()
+        }
+        
+        def progress_callback(phase, progress, detail, mark_done=None):
+            progress_state["phase"] = phase
+            progress_state["progress"] = progress
+            progress_state["detail"] = detail
+            if mark_done:
+                progress_state["done_phases"].add(mark_done)
+                
         loading_msg = await query.edit_message_text(text="⚡ *UPLINK ACTIVE* | Securing datastreams and synthesizing intelligence...", parse_mode="Markdown")
         
         # Start dynamic progress updates in the background
-        ticker_task = asyncio.create_task(update_loading_message(loading_msg, context))
+        ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
         
         pdf_filename = None
         try:
             # Run the synchronous digest generation in a thread
-            pdf_filename = await asyncio.to_thread(generate_latest_digest, 5)
+            pdf_filename = await asyncio.to_thread(generate_latest_digest, 5, progress_callback)
         finally:
             ticker_task.cancel()
             try:
@@ -211,12 +228,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
         if pdf_filename and os.path.exists(pdf_filename):
             try:
+                progress_callback("Delivering", 95, "Uploading PDF to Telegram servers...")
                 caption = f"🎯 *PAYLOAD SECURED* | Daily tactical intelligence compiled successfully."
                 pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
                 with open(pdf_filename, "rb") as file:
                     msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
                     if msg and msg.document:
                         await database.set_cached_file_id_exact("latest", msg.document.file_id)
+                progress_callback("Delivering", 100, "Delivery complete!", mark_done="Delivering")
             finally:
                 try:
                     os.remove(pdf_filename)
@@ -279,10 +298,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await query.edit_message_text(text=stats_text, reply_markup=reply_markup, parse_mode="Markdown")
             
         elif action == "admin_broadcast":
+            progress_state = {
+                "phase": "Finding Stories",
+                "progress": 0,
+                "detail": "🌐 Initializing global broadcast...",
+                "done_phases": set()
+            }
+            
+            def progress_callback(phase, progress, detail, mark_done=None):
+                progress_state["phase"] = phase
+                progress_state["progress"] = progress
+                progress_state["detail"] = detail
+                if mark_done:
+                    progress_state["done_phases"].add(mark_done)
+                    
             loading_msg = await query.edit_message_text(text="⏳ Preparing global broadcast. Please standby...")
-            ticker_task = asyncio.create_task(update_loading_message(loading_msg, context))
+            ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
             try:
-                await scheduled_broadcast(context, force_fresh=True)
+                await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
             finally:
                 ticker_task.cancel()
                 try:
@@ -328,13 +361,27 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         except Exception as e:
             logger.warning(f"Failed to send cached targeted file_id, generating fresh: {e}")
             
+    progress_state = {
+        "phase": "Finding Stories",
+        "progress": 0,
+        "detail": f"🌐 Initializing search for '{query}'...",
+        "done_phases": set()
+    }
+    
+    def progress_callback(phase, progress, detail, mark_done=None):
+        progress_state["phase"] = phase
+        progress_state["progress"] = progress
+        progress_state["detail"] = detail
+        if mark_done:
+            progress_state["done_phases"].add(mark_done)
+            
     loading_msg = await update.message.reply_text(f"⚡ *UPLINK ACTIVE* | Securing datastreams for *{query}*...", parse_mode="Markdown")
     
     # Start dynamic progress updates in the background
-    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, topic=query))
+    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state, topic=query))
     
     try:
-        pdf_filename = await asyncio.to_thread(generate_targeted_digest, query, 5)
+        pdf_filename = await asyncio.to_thread(generate_targeted_digest, query, 5, progress_callback)
     finally:
         # Cancel the progress ticker
         ticker_task.cancel()
@@ -350,6 +397,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     if pdf_filename and os.path.exists(pdf_filename):
         try:
+            progress_callback("Delivering", 95, "Uploading PDF to Telegram servers...")
             caption = f"🎯 *PAYLOAD SECURED* | Tactical intelligence for *{query}* compiled successfully."
             pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
             keyboard = [
@@ -363,6 +411,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
                 if msg and msg.document:
                     await database.set_cached_file_id_semantic(query, msg.document.file_id)
+            progress_callback("Delivering", 100, "Delivery complete!", mark_done="Delivering")
         finally:
             try:
                 os.remove(pdf_filename)
@@ -393,10 +442,24 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 @admin_only
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Force an immediate daily broadcast (Admin Only)."""
+    progress_state = {
+        "phase": "Finding Stories",
+        "progress": 0,
+        "detail": "🌐 Initializing global broadcast...",
+        "done_phases": set()
+    }
+    
+    def progress_callback(phase, progress, detail, mark_done=None):
+        progress_state["phase"] = phase
+        progress_state["progress"] = progress
+        progress_state["detail"] = detail
+        if mark_done:
+            progress_state["done_phases"].add(mark_done)
+            
     loading_msg = await update.message.reply_text("⚡ *OVERRIDE ACTIVE* | Deploying global broadcast. Standby...", parse_mode="Markdown")
-    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context))
+    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
     try:
-        await scheduled_broadcast(context, force_fresh=True)
+        await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
     finally:
         ticker_task.cancel()
         try:
@@ -509,9 +572,11 @@ async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_
     back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
     await update.message.reply_text(text, reply_markup=back_keyboard, parse_mode="Markdown")
 
-async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: bool = False) -> None:
+async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: bool = False, progress_callback=None) -> None:
     """Scheduled job to generate the daily digest and send it to all subscribers."""
     logger.info("Starting scheduled daily broadcast...")
+    if progress_callback:
+        progress_callback("Finding Stories", 5, "Initializing subscriber database connections...")
     
     subscribers = await database.get_all_subscribers()
     if not subscribers:
@@ -525,6 +590,8 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
                 
     if not subscribers:
         logger.info("No subscribers found for broadcast. Skipping execution.")
+        if progress_callback:
+            progress_callback("Delivering", 100, "No subscribers found. Skipping broadcast.", mark_done="Finding Stories")
         return
         
     cached_file_id = None if force_fresh else await database.get_cached_file_id_exact("latest")
@@ -532,10 +599,16 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
     
     if cached_file_id:
         logger.info("Using cached latest digest for scheduled broadcast.")
+        if progress_callback:
+            progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Finding Stories")
+            progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Writing Summaries")
+            progress_callback("Delivering", 90, "Cached digest retrieved, starting delivery...", mark_done="Creating PDF")
     else:
-        pdf_filename = await asyncio.to_thread(generate_latest_digest, 5)  # Cap at 5 for the single page layout
+        pdf_filename = await asyncio.to_thread(generate_latest_digest, 5, progress_callback)
         if not pdf_filename or not os.path.exists(pdf_filename):
             logger.error("Failed to generate PDF for broadcast.")
+            if progress_callback:
+                progress_callback("Delivering", 100, "⚠️ Generation failed.", mark_done="Delivering")
             return
             
     caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today."
@@ -545,10 +618,14 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
     if pdf_filename:
         pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
         
-    for chat_id in subscribers:
+    for idx, chat_id in enumerate(subscribers):
         # 0.05 seconds delay between sends to prevent hitting Telegram limits
         await asyncio.sleep(0.05)
         
+        if progress_callback:
+            progress = 90 + int((idx / len(subscribers)) * 9)
+            progress_callback("Delivering", progress, f"Broadcasting payload to subscriber {idx + 1} of {len(subscribers)}...")
+            
         sent = False
         for attempt in range(3):
             try:
@@ -588,6 +665,8 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
                 break
             
     logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
+    if progress_callback:
+        progress_callback("Delivering", 100, f"Global broadcast complete! Distributed to {success_count} subscribers.", mark_done="Delivering")
     
     if pdf_filename:
         try:

@@ -495,7 +495,7 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 6, date_str, align="R", ln=1)
 
-def generate_digest_pdf(stories: list, custom_topic: str = None) -> str:
+def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callback=None) -> str:
     """Generates a premium Dark/Light Mode multi-page PDF."""
     date_str = datetime.now().strftime("%d %B %Y")
     
@@ -531,22 +531,36 @@ def generate_digest_pdf(stories: list, custom_topic: str = None) -> str:
     pdf.alias_nb_pages()
     
     # 1. Cover Page
+    if progress_callback:
+        progress_callback("Creating PDF", 70, "Initiating PDF generation and rendering cover page...")
     draw_cover_page(pdf, stories[0], custom_topic)
     
     if custom_topic:
         # 2. TOC Page (Grid Layout)
+        if progress_callback:
+            progress_callback("Creating PDF", 75, "Rendering table of contents (Grid Layout)...")
         draw_custom_toc_page(pdf, stories, custom_topic)
         # 3. Individual Article Pages
         for idx, story in enumerate(stories):
+            if progress_callback:
+                progress = 75 + int((idx / len(stories)) * 13)
+                progress_callback("Creating PDF", progress, f"Rendering article {idx + 1} page ({story.get('title', 'Untitled')[:20]}...)...")
             draw_article_page(pdf, idx + 1, story)
     else:
         # 2. TOC Page (Cascading/List Layout)
+        if progress_callback:
+            progress_callback("Creating PDF", 75, "Rendering table of contents (List Layout)...")
         draw_toc_page(pdf, stories, custom_topic)
         # 3. Individual Article Pages
         for idx, story in enumerate(stories):
+            if progress_callback:
+                progress = 75 + int((idx / len(stories)) * 13)
+                progress_callback("Creating PDF", progress, f"Rendering article {idx + 1} page ({story.get('title', 'Untitled')[:20]}...)...")
             draw_article_page(pdf, idx + 1, story)
             
     # 4. Conclusion Page
+    if progress_callback:
+        progress_callback("Creating PDF", 88, "Drawing concluding thoughts page...")
     draw_conclusion_page(pdf)
     
     if custom_topic:
@@ -555,6 +569,8 @@ def generate_digest_pdf(stories: list, custom_topic: str = None) -> str:
         file_name = f"AoE_Tech_News_({datetime.now().strftime('%d-%m-%Y')}).pdf"
         
     try:
+        if progress_callback:
+            progress_callback("Creating PDF", 90, "Saving document to local storage...", mark_done="Creating PDF")
         pdf.output(file_name)
         shutil.copyfile(file_name, "Daily_Tech_Digest.pdf")
         logger.info(f"Successfully generated dynamic multi-page PDF: {file_name}")
