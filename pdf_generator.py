@@ -15,15 +15,83 @@ WHITE = (255, 255, 255)        # Crisp White
 # Pre-compiled category cleaning pattern
 CAT_CLEAN_RE = re.compile(r'^[\d\s\.]+')
 
+import urllib.request
+import time
+
+MONTSERRAT_REG_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Regular.ttf"
+MONTSERRAT_BOLD_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf"
+
+def ensure_font_exists(filename: str, url: str) -> bool:
+    font_path = f"assets/{filename}"
+    if os.path.exists(font_path) and os.path.getsize(font_path) > 0:
+        return True
+    if not os.path.exists("assets"):
+        os.makedirs("assets")
+    try:
+        logger.info(f"Attempting to download missing font from: {url}")
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response, open(font_path, 'wb') as out_file:
+            out_file.write(response.read())
+        logger.info(f"Successfully downloaded font: {filename}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to download font {filename} from {url}: {e}")
+        if os.path.exists(font_path):
+            try:
+                os.remove(font_path)
+            except Exception:
+                pass
+    return False
+
+def ensure_logo_exists() -> bool:
+    logo_path = "assets/logo.png"
+    if os.path.exists(logo_path) and os.path.getsize(logo_path) > 0:
+        return True
+    urls_to_try = [
+        "https://raw.githubusercontent.com/sumanth3856/Ahead-Of-Everyone/main/assets/logo.png",
+        "https://raw.githubusercontent.com/sumanth3856/Ahead-Of-Everyone/master/assets/logo.png",
+        "https://picsum.photos/200"
+    ]
+    if not os.path.exists("assets"):
+        os.makedirs("assets")
+    for url in urls_to_try:
+        try:
+            logger.info(f"Attempting to download missing logo from: {url}")
+            req = urllib.request.Request(
+                url, 
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            with urllib.request.urlopen(req, timeout=5) as response, open(logo_path, 'wb') as out_file:
+                out_file.write(response.read())
+            logger.info("Successfully downloaded missing logo.")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to download logo from {url}: {e}")
+    if os.path.exists(logo_path) and os.path.getsize(logo_path) == 0:
+        try:
+            os.remove(logo_path)
+        except Exception:
+            pass
+    return False
+
 def sanitize_text(text: str) -> str:
     if not isinstance(text, str): return text
     replacements = {
         '\u2011': '-', '\u2013': '-', '\u2014': '--',
         '\u2018': "'", '\u2019': "'", '\u201c': '"', '\u201d': '"',
         '\u2026': '...', '\u00a0': ' ',
+        '\u200b': '',
+        '\u00a9': '(c)', '\u00ae': '(R)', '\u2122': 'TM',
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
+    try:
+        text.encode('latin-1')
+    except UnicodeEncodeError:
+        text = text.encode('latin-1', errors='replace').decode('latin-1')
     return text
 
 def clean_category(raw_cat: str) -> str:
@@ -44,6 +112,9 @@ class CustomPDF(FPDF):
         if not os.path.exists("assets"):
             os.makedirs("assets")
             
+        ensure_font_exists("Montserrat-Regular.ttf", MONTSERRAT_REG_URL)
+        ensure_font_exists("Montserrat-Bold.ttf", MONTSERRAT_BOLD_URL)
+        
         try:
             self.add_font("Montserrat", "", "assets/Montserrat-Regular.ttf")
             self.add_font("Montserrat", "B", "assets/Montserrat-Bold.ttf")
@@ -114,9 +185,25 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     
     # Logo
     logo_path = "assets/logo.png"
-    if os.path.exists(logo_path):
-        # A4 width is 210. Centered x for 25mm width is (210-25)/2 = 92.5
-        pdf.image(logo_path, x=92.5, y=20, w=25, h=25)
+    has_logo = False
+    try:
+        if ensure_logo_exists():
+            # A4 width is 210. Centered x for 25mm width is (210-25)/2 = 92.5
+            pdf.image(logo_path, x=92.5, y=20, w=25, h=25)
+            has_logo = True
+    except Exception as e:
+        logger.warning(f"Failed to draw logo image: {e}")
+        
+    if not has_logo:
+        # Fallback: Draw stylized vector placeholder (purple circle with 'AoE' text)
+        pdf.set_fill_color(*BRAND_ACCENT)
+        pdf.ellipse(95, 22.5, 20, 20, 'F')
+        pdf.set_text_color(*WHITE)
+        # Use Montserrat or fall back to helvetica
+        current_font = "Montserrat" if not getattr(pdf, 'use_fallback_fonts', False) else "helvetica"
+        pdf.set_font(current_font, "B", 10)
+        pdf.set_xy(95, 22.5)
+        pdf.cell(20, 20, "AoE", align="C")
         
     # Title - Centered, massive
     pdf.set_y(50)
@@ -244,7 +331,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_text_color(*BLACK)
     pdf.multi_cell(0, 11, story.get("headline", "News Story"), align="L")
     
-    pdf.set_y(pdf.get_y() + 15)
+    pdf.set_y(pdf.get_y() + 10)
     
     # THE BRIEF
     pdf.set_font("Montserrat", "B", 10)
@@ -255,13 +342,13 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
     pdf.set_y(pdf.get_y() + 2)
-    pdf.set_font("Montserrat", "", 13) # Using 13pt Regular for "thicker" feel
+    pdf.set_font("Montserrat", "", 11) # Reduced from 13 to fit 1-page
     pdf.set_text_color(*BLACK)
     # Asymmetric indent for body text
     pdf.set_x(24)
-    pdf.multi_cell(174, 7.5, story.get("the_brief", ""), align="L")
+    pdf.multi_cell(174, 6.5, story.get("the_brief", ""), align="L")
     
-    pdf.set_y(pdf.get_y() + 15)
+    pdf.set_y(pdf.get_y() + 10)
     
     # CORE BREAKDOWN
     pdf.set_x(12)
@@ -273,49 +360,23 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     pdf.set_y(pdf.get_y() + 4)
     
-    bullets = story.get("core_breakdown", [])
-    for bullet in bullets:
-        if pdf.get_y() > 240:
-            pdf.add_page()
-            pdf.set_y(20)
-            
-        pdf.set_x(24) # Indented bullet
-        
-        topic = bullet.get("topic", "")
-        # Draw small purple square for bullet
-        pdf.set_fill_color(*BRAND_ACCENT)
-        pdf.rect(24, pdf.get_y() + 2.5, 2, 2, 'F')
-        
-        pdf.set_x(30)
-        desc = bullet.get("description", bullet.get("text", ""))
-        
-        # Inline bolding using write()
-        old_l_margin = pdf.l_margin
-        pdf.set_left_margin(30)
-        pdf.set_x(30)
-        
-        if topic:
-            pdf.set_font("Montserrat", "B", 13)
-            pdf.set_text_color(*BLACK)
-            pdf.write(7.5, f"{topic.upper()}: ")
-            
-        pdf.set_font("Montserrat", "", 13)
-        pdf.set_text_color(*BLACK)
-        pdf.write(7.5, f"{desc}\n\n")
-        
-        pdf.set_left_margin(old_l_margin)
+    core_text = story.get("core_breakdown", "")
+    pdf.set_x(24)
+    pdf.set_font("Montserrat", "", 11)
+    pdf.set_text_color(*BLACK)
+    pdf.multi_cell(174, 6.5, core_text, align="L")
         
     if pdf.get_y() > 220:
         pdf.add_page()
         pdf.set_y(20)
         
-    pdf.set_y(pdf.get_y() + 10)
+    pdf.set_y(pdf.get_y() + 8)
     
     # T H E   E D G E (Pull-Quote Style)
     wy = pdf.get_y()
     pdf.set_fill_color(*BRAND_ACCENT)
     # Thick bold purple line on the left
-    pdf.rect(12, wy, 2, 35, 'F')
+    pdf.rect(12, wy, 2, 25, 'F')
     
     pdf.set_xy(18, wy + 2)
     pdf.set_font("Montserrat", "B", 10)
@@ -326,9 +387,20 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
     pdf.set_xy(18, wy + 10)
-    pdf.set_font("Montserrat", "B", 16)
+    pdf.set_font("Montserrat", "B", 14)
     pdf.set_text_color(*BLACK)
-    pdf.multi_cell(180, 8, f"\"{story.get('the_edge', '')}\"", align="L")
+    pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="L")
+    
+    pdf.set_y(pdf.get_y() + 6)
+    
+    # T H E   D E E P   D I V E
+    pdf.set_x(12)
+    pdf.set_font("Montserrat", "I", 10)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.set_fill_color(248, 248, 250) # Very subtle gray/purple tint
+    deep_dive_text = f" DEEP DIVE: {story.get('the_deep_dive', '')}"
+    # Left and Right padding simulated by adding space
+    pdf.multi_cell(186, 7, deep_dive_text, align="L", fill=True)
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
     pdf.suppress_header = False

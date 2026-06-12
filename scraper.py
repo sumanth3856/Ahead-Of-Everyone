@@ -39,16 +39,38 @@ HTML_STRIP_RE = re.compile(r'<[^>]+>')
 WORD_TOKEN_RE = re.compile(r'\w+')
 HEADLINE_CLEAN_RE = re.compile(r'\s+[-|]\s+[^|-]+$')
 
+from urllib3.util import Retry
+from requests.adapters import HTTPAdapter
+
 # Global requests session to enable HTTP Keep-Alive connection pooling
 _http_session = requests.Session()
+
+def setup_http_session(session):
+    retries = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 502, 503, 504],
+        raise_on_status=False
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+setup_http_session(_http_session)
 
 def load_sent_registry() -> List[Dict]:
     if os.path.exists(REGISTRY_FILE):
         try:
             with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading registry: {e}")
+        except (json.JSONDecodeError, IOError) as e:
+            logger.error(f"Error loading registry, backing up corrupted file: {e}")
+            try:
+                corrupted_backup = f"{REGISTRY_FILE}.corrupted.{int(time.time())}"
+                os.rename(REGISTRY_FILE, corrupted_backup)
+                logger.info(f"Renamed corrupted registry file to {corrupted_backup}")
+            except Exception as backup_err:
+                logger.error(f"Could not rename corrupted registry: {backup_err}")
     return []
 
 def save_sent_registry(registry: List[Dict]) -> None:
@@ -112,6 +134,65 @@ def register_sent_stories(stories: List[Dict]) -> None:
     save_sent_registry(registry)
     logger.info(f"Registered {len(stories)} articles in registry and pruned old entries.")
 
+def clean_json_content(content: str) -> str:
+    content = content.strip()
+    if content.startswith("```json"):
+        content = content[7:]
+    elif content.startswith("```"):
+        content = content[3:]
+    if content.endswith("```"):
+        content = content[:-3]
+    content = content.strip()
+    return content
+
+def try_parse_json(content: str) -> Optional[Dict]:
+    content = clean_json_content(content)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        # Try finding JSON block manually via regex in case there is text before/after
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except Exception:
+                pass
+    return None
+
+def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
+    logger.warning(f"Attempting to repair invalid JSON structure using model {model_id}...")
+    repair_prompt = (
+        "You are a strict JSON fixer. Fix the following invalid JSON string so it is valid JSON according to the schema:\n"
+        "{\n"
+        "  \"category\": \"tag\",\n"
+        "  \"headline\": \"string\",\n"
+        "  \"headline_highlight\": \"string\",\n"
+        "  \"the_brief\": \"string\",\n"
+        "  \"core_breakdown\": \"string\",\n"
+        "  \"the_edge\": \"string\",\n"
+        "  \"the_deep_dive\": \"string\"\n"
+        "}\n"
+        "Output ONLY valid JSON. Do not include markdown formatting like ```json."
+    )
+    try:
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": repair_prompt},
+                {"role": "user", "content": f"Invalid JSON to fix:\n{broken_content}"}
+            ],
+            timeout=10,
+        )
+        if hasattr(response, 'choices') and response.choices:
+            content = response.choices[0].message.content.strip()
+            parsed = try_parse_json(content)
+            if parsed:
+                logger.info("Successfully repaired JSON via LLM.")
+                return parsed
+    except Exception as e:
+        logger.warning(f"Failed to repair JSON with model {model_id}: {e}")
+    return None
+
 def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
     """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout.
     
@@ -126,21 +207,13 @@ You MUST output ONLY valid JSON. Do not include markdown formatting like ```json
 
 JSON Schema:
 {
-  "category": "A 3-part tag using the SECTOR hint if provided (e.g., '01 . FEATURE . AI INNOVATION', '03 . SECTOR . MEDICAL & PHARMA', '04 . SECTOR . AGRICULTURE', '05 . SECTOR . CLIMATE & WEATHER')",
-  "headline": "An eye-catching, scroll-stopping, and attention-grabbing headline that rephrases the original to hook the reader (avoid dry or boring titles)",
-  "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline to highlight.",
-  "the_brief": "A highly concise 1-2 sentence summary of the news (maximum 160 characters).",
-  "core_breakdown": [
-    {
-      "topic": "1-2 word category/topic (e.g., 'Market impact' or 'Tech shift')",
-      "description": "A concise detail (maximum 90 characters)"
-    },
-    {
-      "topic": "1-2 word category/topic",
-      "description": "A concise detail (maximum 90 characters)"
-    }
-  ],
-  "the_edge": "A punchy, single-sentence future-looking takeaway or hot take (maximum 100 characters)."
+  "category": "A 3-part tag using the SECTOR hint if provided (e.g., '01 . FEATURE . AI INNOVATION')",
+  "headline": "An eye-catching, scroll-stopping headline that rephrases the original to hook the reader",
+  "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline.",
+  "the_brief": "A dense 2-sentence paragraph answering Who, What, When, Where, and Why. (Strict limit: 250 characters max).",
+  "core_breakdown": "A tightly woven mini-paragraph of facts (3 sentences max). Each sentence must contain highly specific details (metrics, technology names, specific mechanisms) rather than generic fluff. (Strict limit: 250 characters max).",
+  "the_edge": "A blend of a journalistic hook and a futuristic prediction. Make it bold and attention-grabbing. (Strict limit: 120 characters max).",
+  "the_deep_dive": "A short, provocative question or unresolved mystery about the topic that leaves the user curious. (Strict limit: 150 characters max)."
 }"""
 
     # Build user message with social context if available
@@ -180,12 +253,18 @@ JSON Schema:
                 ],
                 timeout=12,
             )
+            if not hasattr(response, 'choices') or not response.choices:
+                logger.warning(f"OpenRouter unexpected response: {response}")
+                raise ValueError("Invalid OpenRouter response structure")
             content = response.choices[0].message.content.strip()
-            if content.startswith("```json"):
-                content = content[7:-3].strip()
-            elif content.startswith("```"):
-                content = content[3:-3].strip()
-            return json.loads(content)
+            parsed = try_parse_json(content)
+            if parsed:
+                return parsed
+            else:
+                # Retry formatting via LLM if parsing failed
+                repaired = request_llm_repair(content, primary_model)
+                if repaired:
+                    return repaired
         except Exception as e:
             logger.warning(f"Primary model attempt {attempt + 1} failed for '{title}': {e}")
 
@@ -202,12 +281,17 @@ JSON Schema:
                 ],
                 timeout=12,
             )
+            if not hasattr(response, 'choices') or not response.choices:
+                logger.warning(f"OpenRouter unexpected response: {response}")
+                raise ValueError("Invalid OpenRouter response structure")
             content = response.choices[0].message.content.strip()
-            if content.startswith("```json"):
-                content = content[7:-3].strip()
-            elif content.startswith("```"):
-                content = content[3:-3].strip()
-            return json.loads(content)
+            parsed = try_parse_json(content)
+            if parsed:
+                return parsed
+            else:
+                repaired = request_llm_repair(content, model_id)
+                if repaired:
+                    return repaired
         except Exception as e:
             logger.warning(f"Backup model {model_id} failed for '{title}': {e}")
 
@@ -399,7 +483,7 @@ def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
 
 # ─── Reddit JSON API ────────────────────────────────────────────────────────
 
-REDDIT_USER_AGENT = "AoE-Bot/2.0 by /u/AheadOfEveryone"
+REDDIT_USER_AGENT = "windows:ahead_of_everyone_bot:v2.0 (by /u/AheadOfEveryone)"
 
 def fetch_reddit_top_stories(subreddits: List[str] = None, limit: int = 10) -> List[Dict]:
     """Fetches top daily posts from specified subreddits using the public JSON API.

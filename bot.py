@@ -13,7 +13,24 @@ from aiohttp import web
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
-from telegram.error import Forbidden, BadRequest, Conflict, NetworkError, TimedOut
+from telegram.error import Forbidden, BadRequest, Conflict, NetworkError, TimedOut, RetryAfter
+
+def safe_handler(func):
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        try:
+            return await func(update, context, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in handler {func.__name__}: {e}", exc_info=True)
+            err_msg = "⚠️ *SYSTEM ENCOUNTERED A TEMPORARY HICCUP*\n\nDon't worry, our team has been notified and we are fixing it right away! Please try again in a few moments."
+            try:
+                if update.callback_query:
+                    await update.callback_query.answer("⚠️ An unexpected error occurred. Please try again.", show_alert=True)
+                elif update.effective_message:
+                    await update.effective_message.reply_text(err_msg, parse_mode="Markdown")
+            except Exception as notify_err:
+                logger.error(f"Failed to send error notification to user: {notify_err}")
+    return wrapper
 
 def admin_only(func):
     @wraps(func)
@@ -524,31 +541,51 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
     caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today."
     
     success_count = 0
+    pretty_filename = None
     if pdf_filename:
         pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
         
     for chat_id in subscribers:
-        try:
-            if cached_file_id:
-                await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown")
-            else:
-                with open(pdf_filename, "rb") as file:
-                    msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
-                    if msg and msg.document:
-                        cached_file_id = msg.document.file_id
-                        await database.set_cached_file_id_exact("latest", cached_file_id)
-            success_count += 1
-        except Forbidden:
-            logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
-            await database.remove_subscriber(chat_id)
-        except BadRequest as e:
-            if "chat not found" in str(e).lower():
-                logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
+        # 0.05 seconds delay between sends to prevent hitting Telegram limits
+        await asyncio.sleep(0.05)
+        
+        sent = False
+        for attempt in range(3):
+            try:
+                if cached_file_id:
+                    await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown")
+                else:
+                    with open(pdf_filename, "rb") as file:
+                        msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
+                        if msg and msg.document:
+                            cached_file_id = msg.document.file_id
+                            await database.set_cached_file_id_exact("latest", cached_file_id)
+                success_count += 1
+                sent = True
+                break
+            except RetryAfter as e:
+                logger.warning(f"Telegram rate limit hit (RetryAfter). Sleeping for {e.retry_after}s (attempt {attempt + 1}/3)...")
+                await asyncio.sleep(e.retry_after)
+            except Forbidden:
+                logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
                 await database.remove_subscriber(chat_id)
-            else:
-                logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
-        except Exception as e:
-            logger.error(f"Failed to send to {chat_id}: {e}")
+                break
+            except BadRequest as e:
+                if "chat not found" in str(e).lower():
+                    logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
+                    await database.remove_subscriber(chat_id)
+                else:
+                    logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
+                break
+            except (NetworkError, TimedOut) as e:
+                logger.warning(f"Network error/timeout sending to {chat_id} (attempt {attempt + 1}/3): {e}")
+                if attempt < 2:
+                    await asyncio.sleep(1)
+                else:
+                    logger.error(f"Failed to send to {chat_id} after all retries: {e}")
+            except Exception as e:
+                logger.error(f"Failed to send to {chat_id} due to unexpected error: {e}")
+                break
             
     logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
     
@@ -626,16 +663,16 @@ def build_bot() -> Application:
         .build()
     )
     
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("news", news_command))
-    app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("broadcast", admin_broadcast_command))
-    app.add_handler(CommandHandler("stats", admin_stats_command))
-    app.add_handler(CommandHandler("admin_stats", admin_stats_command))
-    app.add_handler(CommandHandler("admin_broadcast", admin_broadcast_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, general_message_handler))
+    app.add_handler(CommandHandler("start", safe_handler(start_command)))
+    app.add_handler(CommandHandler("news", safe_handler(news_command)))
+    app.add_handler(CommandHandler("status", safe_handler(status_command)))
+    app.add_handler(CommandHandler("help", safe_handler(help_command)))
+    app.add_handler(CommandHandler("broadcast", safe_handler(admin_broadcast_command)))
+    app.add_handler(CommandHandler("stats", safe_handler(admin_stats_command)))
+    app.add_handler(CommandHandler("admin_stats", safe_handler(admin_stats_command)))
+    app.add_handler(CommandHandler("admin_broadcast", safe_handler(admin_broadcast_command)))
+    app.add_handler(CallbackQueryHandler(safe_handler(button_handler)))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, safe_handler(general_message_handler)))
     
     # Register global error handler
     app.add_error_handler(error_handler)

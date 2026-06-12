@@ -114,13 +114,56 @@ async def init_db():
     except Exception as e:
         logger.error(f"Failed to init DB: {e}")
 
+async def execute_with_retry(query: str, *args, is_fetch: bool = False, is_fetchrow: bool = False):
+    """Executes a query or fetches rows with retries and auto-reconnection on transient errors."""
+    last_err = None
+    for attempt in range(3):
+        try:
+            pool = await get_pool()
+            if pool is None:
+                # Force pool recreation if None or failed to initialize
+                global _pool
+                async with _pool_lock:
+                    _pool = None
+                pool = await get_pool()
+                if pool is None:
+                    raise asyncpg.exceptions.InterfaceError("Could not establish connection pool.")
+            
+            async with pool.acquire() as conn:
+                if is_fetchrow:
+                    return await conn.fetchrow(query, *args)
+                elif is_fetch:
+                    return await conn.fetch(query, *args)
+                else:
+                    return await conn.execute(query, *args)
+        except (asyncpg.exceptions.InterfaceError, asyncpg.exceptions.InternalClientError) as e:
+            last_err = e
+            logger.warning(f"Transient DB connection error on attempt {attempt + 1}/3: {e}")
+            # Reset pool to force reconnection on next retry
+            async with _pool_lock:
+                if _pool:
+                    try:
+                        await _pool.close()
+                    except Exception:
+                        pass
+                    _pool = None
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Database query error on attempt {attempt + 1}/3: {e}")
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+            else:
+                raise e
+    if last_err:
+        raise last_err
+    raise RuntimeError("Database operation failed after 3 attempts.")
+
 async def add_subscriber(chat_id: int) -> bool:
-    pool = await get_pool()
-    if not pool: return False
     try:
-        async with pool.acquire() as conn:
-            await conn.execute("INSERT INTO subscribers (chat_id) VALUES ($1)", chat_id)
-            return True
+        await execute_with_retry("INSERT INTO subscribers (chat_id) VALUES ($1)", chat_id)
+        return True
     except asyncpg.exceptions.UniqueViolationError:
         return False
     except Exception as e:
@@ -128,23 +171,17 @@ async def add_subscriber(chat_id: int) -> bool:
         return False
 
 async def remove_subscriber(chat_id: int) -> bool:
-    pool = await get_pool()
-    if not pool: return False
     try:
-        async with pool.acquire() as conn:
-            result = await conn.execute("DELETE FROM subscribers WHERE chat_id = $1", chat_id)
-            return int(result.split()[-1]) > 0
+        result = await execute_with_retry("DELETE FROM subscribers WHERE chat_id = $1", chat_id)
+        return int(result.split()[-1]) > 0
     except Exception as e:
         logger.error(f"Error removing subscriber {chat_id}: {e}")
         return False
 
 async def get_all_subscribers() -> list[int]:
-    pool = await get_pool()
-    if not pool: return []
     try:
-        async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT chat_id FROM subscribers")
-            return [row['chat_id'] for row in rows]
+        rows = await execute_with_retry("SELECT chat_id FROM subscribers", is_fetch=True)
+        return [row['chat_id'] for row in rows]
     except Exception as e:
         logger.error(f"Error getting subscribers: {e}")
         return []
@@ -152,7 +189,10 @@ async def get_all_subscribers() -> list[int]:
 async def close_db():
     global _pool, _session
     if _pool:
-        await _pool.close()
+        try:
+            await _pool.close()
+        except Exception as e:
+            logger.warning(f"Error closing DB pool: {e}")
         _pool = None
         logger.info("Database connection pool closed.")
     if _session and not _session.closed:
@@ -171,73 +211,77 @@ async def get_embedding(text: str) -> list[float] | None:
     if hf_token:
         headers["Authorization"] = f"Bearer {hf_token}"
     
-    try:
-        session = await get_http_session()
-        async with session.post(url, headers=headers, json={"inputs": text}) as response:
-            if response.status == 200:
-                data = await response.json()
-                # HF API can return a list of floats or a list of list of floats
-                if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                    return data[0]
-                elif isinstance(data, list) and len(data) > 0:
-                    return data
-            else:
-                text_resp = await response.text()
-                logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
-    except Exception as e:
-        logger.error(f"Error fetching embedding from HuggingFace: {e}")
+    for attempt in range(3):
+        try:
+            session = await get_http_session()
+            async with session.post(url, headers=headers, json={"inputs": text}, timeout=15) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    # Check if Hugging Face returned an error indicating the model is loading
+                    if isinstance(data, dict) and "error" in data:
+                        err_msg = data.get("error", "")
+                        if "loading" in err_msg.lower():
+                            est_time = min(float(data.get("estimated_time", 5)), 10.0)
+                            logger.info(f"HuggingFace model is loading. Waiting {est_time}s (attempt {attempt + 1}/3)...")
+                            await asyncio.sleep(est_time)
+                            continue
+                    
+                    if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                        return data[0]
+                    elif isinstance(data, list) and len(data) > 0:
+                        return data
+                elif response.status in (503, 429):
+                    logger.warning(f"HuggingFace transient status {response.status} (attempt {attempt + 1}/3). Retrying after 3s...")
+                    await asyncio.sleep(3)
+                else:
+                    text_resp = await response.text()
+                    logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
+                    break
+        except Exception as e:
+            logger.error(f"Error fetching embedding from HuggingFace (attempt {attempt + 1}/3): {e}")
+            if attempt < 2:
+                await asyncio.sleep(3)
     return None
 
 async def get_cached_file_id_exact(topic: str) -> str | None:
-    pool = await get_pool()
-    if pool is None: return None
-    
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("""
-                SELECT file_id FROM digests_cache 
-                WHERE topic = $1 AND generated_date_ist::DATE = $2::DATE
-            """, versioned_topic, current_ist_date)
-            if row:
-                return row['file_id']
+        row = await execute_with_retry("""
+            SELECT file_id FROM digests_cache 
+            WHERE topic = $1 AND generated_date_ist::DATE = $2::DATE
+        """, versioned_topic, current_ist_date, is_fetchrow=True)
+        if row:
+            return row['file_id']
     except Exception as e:
         logger.error(f"Error reading exact cache: {e}")
     return None
 
 async def set_cached_file_id_exact(topic: str, file_id: str):
-    pool = await get_pool()
-    if pool is None: return
-    
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
-        async with pool.acquire() as conn:
-            if HAS_VECTOR_COLUMN:
-                await conn.execute("""
-                    INSERT INTO digests_cache (topic, file_id, generated_date_ist)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (topic) DO UPDATE 
-                    SET file_id = EXCLUDED.file_id,
-                        generated_date_ist = EXCLUDED.generated_date_ist,
-                        topic_embedding = NULL
-                """, versioned_topic, file_id, current_ist_date)
-            else:
-                await conn.execute("""
-                    INSERT INTO digests_cache (topic, file_id, generated_date_ist)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (topic) DO UPDATE 
-                    SET file_id = EXCLUDED.file_id,
-                        generated_date_ist = EXCLUDED.generated_date_ist
-                """, versioned_topic, file_id, current_ist_date)
+        if HAS_VECTOR_COLUMN:
+            await execute_with_retry("""
+                INSERT INTO digests_cache (topic, file_id, generated_date_ist)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (topic) DO UPDATE 
+                SET file_id = EXCLUDED.file_id,
+                    generated_date_ist = EXCLUDED.generated_date_ist,
+                    topic_embedding = NULL
+            """, versioned_topic, file_id, current_ist_date)
+        else:
+            await execute_with_retry("""
+                INSERT INTO digests_cache (topic, file_id, generated_date_ist)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (topic) DO UPDATE 
+                SET file_id = EXCLUDED.file_id,
+                    generated_date_ist = EXCLUDED.generated_date_ist
+            """, versioned_topic, file_id, current_ist_date)
     except Exception as e:
         logger.error(f"Error writing exact cache: {e}")
 
 async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> str | None:
-    pool = await get_pool()
-    if pool is None: return None
-    
     if not HAS_VECTOR_COLUMN:
         logger.info(f"Vector support disabled. Falling back to exact match for topic: '{topic}'")
         return await get_cached_file_id_exact(topic)
@@ -249,29 +293,25 @@ async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> st
     current_ist_date = get_current_ist_date()
     vec_str = str(embedding)
     try:
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("""
-                SELECT file_id, 1 - (topic_embedding <=> $1::vector) as similarity
-                FROM digests_cache
-                WHERE generated_date_ist::DATE = $2::DATE
-                  AND topic LIKE $4
-                  AND topic_embedding IS NOT NULL
-                  AND 1 - (topic_embedding <=> $1::vector) >= $3
-                ORDER BY similarity DESC
-                LIMIT 1
-            """, vec_str, current_ist_date, threshold, f"{CACHE_VERSION}:%")
-            
-            if row:
-                logger.info(f"Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
-                return row['file_id']
+        row = await execute_with_retry("""
+            SELECT file_id, 1 - (topic_embedding <=> $1::vector) as similarity
+            FROM digests_cache
+            WHERE generated_date_ist::DATE = $2::DATE
+              AND topic LIKE $4
+              AND topic_embedding IS NOT NULL
+              AND 1 - (topic_embedding <=> $1::vector) >= $3
+            ORDER BY similarity DESC
+            LIMIT 1
+        """, vec_str, current_ist_date, threshold, f"{CACHE_VERSION}:%", is_fetchrow=True)
+        
+        if row:
+            logger.info(f"Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
+            return row['file_id']
     except Exception as e:
         logger.error(f"Error reading semantic cache: {e}")
     return None
 
 async def set_cached_file_id_semantic(topic: str, file_id: str):
-    pool = await get_pool()
-    if pool is None: return
-    
     if not HAS_VECTOR_COLUMN:
         await set_cached_file_id_exact(topic, file_id)
         return
@@ -285,14 +325,13 @@ async def set_cached_file_id_semantic(topic: str, file_id: str):
     vec_str = str(embedding)
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     try:
-        async with pool.acquire() as conn:
-            await conn.execute("""
-                INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding)
-                VALUES ($1, $2, $3, $4::vector)
-                ON CONFLICT (topic) DO UPDATE 
-                SET file_id = EXCLUDED.file_id,
-                    generated_date_ist = EXCLUDED.generated_date_ist,
-                    topic_embedding = EXCLUDED.topic_embedding
-            """, versioned_topic, file_id, current_ist_date, vec_str)
+        await execute_with_retry("""
+            INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding)
+            VALUES ($1, $2, $3, $4::vector)
+            ON CONFLICT (topic) DO UPDATE 
+            SET file_id = EXCLUDED.file_id,
+                generated_date_ist = EXCLUDED.generated_date_ist,
+                topic_embedding = EXCLUDED.topic_embedding
+        """, versioned_topic, file_id, current_ist_date, vec_str)
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")
