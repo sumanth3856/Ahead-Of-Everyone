@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Send, AlertCircle, ShieldCheck } from "lucide-react";
-import { loginWithTelegram } from "@/app/auth/actions";
+import TelegramLoginWidget from "@/components/TelegramLoginWidget";
 
 export default async function LoginPage({
   searchParams,
@@ -39,15 +39,12 @@ export default async function LoginPage({
               <p className="text-sm text-muted">To access your dashboard, please authenticate using your Telegram account.</p>
             </div>
 
-            <form action={loginWithTelegram} className="w-full mt-4">
-              <button 
-                type="submit" 
-                className="w-full bg-[#2AABEE]/10 border border-[#2AABEE]/50 text-[#2AABEE] font-semibold tracking-widest text-sm uppercase py-4 rounded-lg hover:bg-[#2AABEE] hover:text-white hover:shadow-[0_0_25px_rgba(42,171,238,0.5)] transition-all duration-300 flex items-center justify-center gap-3 group/btn cursor-pointer"
-              >
-                <Send className="h-5 w-5 group-hover/btn:-translate-y-1 group-hover/btn:translate-x-1 transition-transform" />
-                <span>Log in with Telegram</span>
-              </button>
-            </form>
+            <div className="w-full mt-4 flex justify-center">
+              <TelegramLoginWidget 
+                botName="aheadofeveryone_bot" 
+                authUrl={`${process.env.NEXT_PUBLIC_SITE_URL}/api/auth/telegram`} 
+              />
+            </div>
           </div>
         </div>
 
