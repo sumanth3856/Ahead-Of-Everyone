@@ -2,6 +2,7 @@ import os
 import logging
 import shutil
 import re
+import time
 from fpdf import FPDF
 from datetime import datetime
 
@@ -523,8 +524,11 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
     
     pdf = CustomPDF(date_str, custom_topic)
     
+    start_time = time.time()
+    logger.info(f"[PDF] Starting generation. Custom topic: {custom_topic}, Stories: {len(stories)}")
+    
     if not stories:
-        logger.error("No stories provided for PDF generation.")
+        logger.error("[PDF] No stories provided for PDF generation.")
         return ""
         
     sanitized_stories = []
@@ -595,9 +599,10 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
             progress_callback("Creating PDF", 90, "Saving document to local storage...", mark_done="Creating PDF")
         pdf.output(file_name)
         shutil.copyfile(file_name, "Daily_Tech_Digest.pdf")
-        logger.info(f"Successfully generated dynamic multi-page PDF: {file_name}")
+        elapsed = time.time() - start_time
+        logger.info(f"[PDF] Successfully generated dynamic multi-page PDF: {file_name} in {elapsed:.1f}s")
     except Exception as e:
-        logger.error(f"Error producing PDF: {e}")
+        logger.error(f"[PDF] Error producing PDF: {e}")
         return ""
         
     return file_name

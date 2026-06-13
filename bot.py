@@ -52,8 +52,9 @@ from main import generate_latest_digest, generate_targeted_digest
 from config import BRAND_NAME
 
 # Setup logging
+logging.Formatter.converter = lambda *args: datetime.now(pytz.timezone('Asia/Kolkata')).timetuple()
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -402,13 +403,16 @@ async def queue_worker(app: Application):
             queue_list.remove(chat_id)
             
         if app.bot_data.get("active_user_generations", {}).get(chat_id, False):
-            logger.info(f"Job {job['job_id']} for chat {chat_id} was cancelled before starting.")
+            logger.info(f"[QUEUE] Skipped cancelled job {job['job_id']} for chat {chat_id}.")
             app.bot_data["request_queue"].task_done()
             continue
             
         query = job["query"]
         message = job["message"]
         is_subscribed = job["is_subscribed"]
+        
+        target_name = f"'{query}'" if query else "Latest Digest"
+        logger.info(f"[QUEUE] Started processing job {job['job_id']} for {target_name} (Chat: {chat_id})")
         
         progress_state = {
             "phase": "Finding Stories",
@@ -436,9 +440,9 @@ async def queue_worker(app: Application):
                 pdf_filename = await generate_latest_digest(5, progress_callback)
         except Exception as e:
             if "cancelled by user" in str(e).lower():
-                logger.info(f"User {chat_id} cancelled the generation.")
+                logger.info(f"[QUEUE] User {chat_id} cancelled the generation during processing.")
             else:
-                logger.error(f"Error during queued generation: {e}")
+                logger.error(f"[QUEUE] Error during queued generation: {e}")
         finally:
             ticker_task.cancel()
             try:
@@ -481,11 +485,13 @@ async def queue_worker(app: Application):
                     try:
                         os.remove(pdf_filename)
                     except Exception as e:
-                        logger.error(f"Failed to delete {pdf_filename}: {e}")
+                        logger.error(f"[QUEUE] Failed to delete {pdf_filename}: {e}")
             else:
+                logger.warning(f"[QUEUE] Generation failed/not found for {target_name}.")
                 back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
                 await app.bot.send_message(chat_id=chat_id, text=f"😔 *NOT FOUND* | Sorry, I couldn't find enough news right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
                 
+        logger.info(f"[QUEUE] Finished processing job {job['job_id']}")
         app.bot_data["request_queue"].task_done()
 
 
@@ -493,6 +499,8 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """Handle the /news command to fetch targeted news using semantic matching."""
     query = " ".join(context.args)
     chat_id = update.message.chat_id
+    
+    logger.info(f"[BOT] User {chat_id} invoked /news with query: '{query}'")
     
     if not query:
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
@@ -525,6 +533,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 @admin_only
 async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /admin_stats command."""
+    logger.info(f"[BOT] Admin {update.effective_user.id} invoked /admin_stats")
     subscribers = await database.get_all_subscribers()
     stats_text = (
         f"*[ SYSTEM STATUS ]*\n\n"
@@ -543,6 +552,9 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 @admin_only
 async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Force an immediate daily broadcast (Admin Only)."""
+    chat_id = update.message.chat_id
+    logger.info(f"[BOT] Admin {chat_id} invoked /broadcast")
+
     progress_state = {
         "phase": "Finding Stories",
         "progress": 0,
@@ -592,6 +604,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Cancel the current running global broadcast or individual user generation."""
+    logger.info(f"[BOT] User {update.effective_user.id} invoked /cancel")
     chat_id = update.effective_chat.id if update.effective_chat else None
     if not chat_id:
         return
@@ -617,6 +630,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""
+    logger.info(f"[BOT] User {update.effective_user.id} invoked /help")
     user_id = str(update.effective_user.id) if update.effective_user else ""
     admin_id = os.getenv("ADMIN_ID", "6038057345")
     is_admin = user_id == admin_id
@@ -655,6 +669,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 @admin_only
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /status command (Admin Only)."""
+    logger.info(f"[BOT] Admin {update.effective_user.id} invoked /status")
     chat_id = update.message.chat_id
     
     # Check database connection state
@@ -709,7 +724,7 @@ async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_
 
 async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: bool = False, progress_callback=None) -> None:
     """Scheduled job to generate the daily digest and send it to all subscribers."""
-    logger.info("Starting scheduled daily broadcast...")
+    logger.info(f"[SCHEDULER] Starting scheduled daily broadcast... (force_fresh={force_fresh})")
     context.bot_data["broadcast_in_progress"] = True
     context.bot_data["broadcast_cancelled"] = False
     

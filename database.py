@@ -110,7 +110,7 @@ async def init_db():
                 logger.warning(f"Could not add topic_embedding column (vector extension may be unsupported): {e}. Vector/semantic caching disabled.")
                 HAS_VECTOR_COLUMN = False
                 
-            logger.info(f"Database tables initialized. HAS_VECTOR_COLUMN: {HAS_VECTOR_COLUMN}")
+            logger.info(f"[DB] Database tables initialized. HAS_VECTOR_COLUMN: {HAS_VECTOR_COLUMN}")
     except Exception as e:
         logger.error(f"Failed to init DB: {e}")
 
@@ -275,11 +275,13 @@ async def get_cached_file_id_exact(topic: str) -> str | None:
     current_ist_date = get_current_ist_date()
     try:
         row = await execute_with_retry("""
-            SELECT file_id FROM digests_cache 
+            SELECT file_id, generated_date_ist FROM digests_cache 
             WHERE topic = $1 AND generated_date_ist::DATE = $2::DATE
         """, versioned_topic, current_ist_date, is_fetchrow=True)
         if row:
+            logger.info(f"[DB] Exact cache hit for '{topic}' (Date: {row['generated_date_ist']})")
             return row['file_id']
+        logger.info(f"[DB] Exact cache miss for '{topic}'")
     except Exception as e:
         logger.error(f"Error reading exact cache: {e}")
     return None
@@ -310,7 +312,7 @@ async def set_cached_file_id_exact(topic: str, file_id: str):
 
 async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> str | None:
     if not HAS_VECTOR_COLUMN:
-        logger.info(f"Vector support disabled. Falling back to exact match for topic: '{topic}'")
+        logger.info(f"[DB] Vector support disabled. Falling back to exact match for topic: '{topic}'")
         return await get_cached_file_id_exact(topic)
         
     embedding = await get_embedding(topic)
@@ -332,7 +334,7 @@ async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> st
         """, vec_str, current_ist_date, threshold, f"{CACHE_VERSION}:%", is_fetchrow=True)
         
         if row:
-            logger.info(f"Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
+            logger.info(f"[DB] Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
             return row['file_id']
     except Exception as e:
         logger.error(f"Error reading semantic cache: {e}")

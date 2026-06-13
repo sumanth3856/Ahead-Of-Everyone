@@ -260,6 +260,7 @@ JSON Schema:
     ]
 
     # 1. Primary Model Attempt (Single Try)
+    logger.info(f"[AI] Processing: {title} (Model: {primary_model})")
     try:
         response = await client.chat.completions.create(
             model=primary_model,
@@ -270,24 +271,28 @@ JSON Schema:
             timeout=12,
         )
         if not hasattr(response, 'choices') or not response.choices:
-            logger.warning(f"OpenRouter unexpected response: {response}")
             raise ValueError("Invalid OpenRouter response structure")
+            
         content = response.choices[0].message.content.strip()
         parsed = try_parse_json(content)
         if parsed:
+            logger.info(f"[AI] Successfully processed: {title} (Model: {primary_model})")
             return parsed
         else:
             # Retry formatting via LLM if parsing failed
             repaired = await request_llm_repair(content, primary_model)
             if repaired:
+                logger.info(f"[AI] Successfully processed: {title} (Model: {primary_model}, repaired)")
                 return repaired
+            else:
+                raise ValueError("JSON parsing and repair failed")
     except Exception as e:
-        logger.warning(f"Primary model attempt failed for '{title}': {e}")
+        logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {primary_model})")
 
     # 2. Sequential Backup Model Attempts
-    logger.info(f"Primary model failed. Attempting {len(backup_models)} backup models sequentially for '{title}'...")
     
     for model_id in backup_models:
+        logger.info(f"[AI] Processing: {title} (Model: {model_id})")
         try:
             response = await client.chat.completions.create(
                 model=model_id,
@@ -301,17 +306,21 @@ JSON Schema:
                 content = response.choices[0].message.content.strip()
                 parsed = try_parse_json(content)
                 if parsed:
-                    logger.info(f"Backup model '{model_id}' succeeded for '{title}'!")
+                    logger.info(f"[AI] Successfully processed: {title} (Model: {model_id})")
                     return parsed
                 else:
                     repaired = await request_llm_repair(content, model_id)
                     if repaired:
-                        logger.info(f"Backup model '{model_id}' succeeded after repair for '{title}'!")
+                        logger.info(f"[AI] Successfully processed: {title} (Model: {model_id}, repaired)")
                         return repaired
+                    else:
+                        raise ValueError("JSON parsing and repair failed")
+            else:
+                raise ValueError("Invalid OpenRouter response structure")
         except Exception as e:
-            pass # Silently ignore individual backup failures to keep logs clean
+            logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {model_id})")
 
-    logger.error(f"All AI models exhausted for '{title}'.")
+    logger.error(f"[AI] Completely unable to process: {title}. Reason: All models exhausted.")
     return None
 
 def strip_html(html_str: str) -> str:
@@ -320,7 +329,7 @@ def strip_html(html_str: str) -> str:
     return " ".join(text.split())
 
 async def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
-    logger.info(f"Fetching RSS feed: {feed_url} with {lookback_hours}h lookback")
+    logger.info(f"[SCRAPER] Fetching RSS feed: {feed_url} with {lookback_hours}h lookback")
     items = []
     try:
         # Pass custom User-Agent to prevent 403 Forbidden errors
@@ -562,7 +571,7 @@ HN_USER_AGENT = "AoE-Bot/2.0 (Ahead of Everyone Daily Digest)"
 
 async def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
     """Fetches top stories from Hacker News concurrently."""
-    logger.info(f"Fetching top {limit} stories from Hacker News API...")
+    logger.info(f"[SCRAPER] Fetching top {limit} stories from Hacker News API...")
     try:
         session = await get_http_session()
         async with session.get(
@@ -574,7 +583,7 @@ async def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
             story_ids = await resp.json()
             story_ids = story_ids[:limit * 3]
     except Exception as e:
-        logger.error(f"Error fetching HN top story IDs: {e}")
+        logger.error(f"[SCRAPER] Error fetching HN top story IDs: {e}")
         return []
 
     items = []
@@ -616,7 +625,7 @@ async def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
                 }
             }
         except Exception as e:
-            logger.warning(f"Error fetching HN item {sid}: {e}")
+            logger.warning(f"[SCRAPER] Error fetching HN item {sid}: {e}")
         return None
 
     # Fetch Hacker News details concurrently
@@ -632,7 +641,7 @@ async def fetch_hn_top_stories(limit: int = 10) -> List[Dict]:
     for t in tasks:
         t.cancel()
 
-    logger.info(f"Fetched {len(items)} stories from Hacker News.")
+    logger.info(f"[SCRAPER] Fetched {len(items)} stories from Hacker News.")
     return items
 
 
@@ -699,7 +708,7 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
       4. Agriculture / Weather / Climate
       5. Best remaining from any pool
     """
-    logger.info("=== Phase 2 Omnichannel Fetch Starting ===")
+    logger.info("[SCRAPER] === Phase 2 Omnichannel Fetch Starting ===")
     registry = load_sent_registry()
     
     # ── 1. Fetch all sources in parallel ─────────────────────────────────
@@ -807,7 +816,7 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
         if not filled:
             break  # all pools exhausted
     
-    logger.info(f"Slot allocator selected {len(selected_items)} stories for AI processing.")
+    logger.info(f"[SCRAPER] Slot allocator selected {len(selected_items)} stories for AI processing.")
     if progress_callback:
         progress_callback("Writing Summaries", 30, f"Selected {len(selected_items)} articles for AI summarization...")
     
@@ -839,7 +848,7 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
 
 async def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None) -> List[Dict]:
     """Scrapes Google News RSS for a specific topic, bypassing the anti-rehash registry."""
-    logger.info(f"Fetching targeted news for query: {query}")
+    logger.info(f"[SCRAPER] Fetching targeted news for query: {query}")
     if progress_callback:
         progress_callback("Finding Stories", 15, f"Searching the web for '{query}'...")
     
