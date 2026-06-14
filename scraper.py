@@ -215,10 +215,11 @@ async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = 
     except Exception as e:
         logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {primary_model})")
 
-    # 2. Concurrent Backup Model Racing Engine
-    logger.info(f"Primary model failed. Racing {len(backup_models)} backup models concurrently for '{title}'...")
+    # 2. Sequential Backup Model Attempts
+    logger.info(f"Primary model failed. Falling back to {len(backup_models)} backup models sequentially for '{title}'...")
     
-    async def fetch_backup(model_id):
+    for model_id in backup_models:
+        logger.info(f"[AI] Processing fallback: {title} (Model: {model_id})")
         try:
             response = await client.chat.completions.create(
                 model=model_id,
@@ -227,18 +228,12 @@ async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = 
             )
             if hasattr(response, 'choices') and response.choices:
                 content = response.choices[0].message.content.strip()
-                return try_parse_json(content)
-        except Exception:
-            pass
-        return None
-
-    tasks = [asyncio.create_task(fetch_backup(mid)) for mid in backup_models]
-    for coro in asyncio.as_completed(tasks):
-        result = await coro
-        if result:
-            logger.info(f"[AI] Backup model won the race for '{title}'!")
-            for t in tasks: t.cancel()
-            return result
+                parsed = try_parse_json(content)
+                if parsed:
+                    logger.info(f"[AI] Successfully processed: {title} (Model: {model_id})")
+                    return parsed
+        except Exception as e:
+            logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {model_id})")
             
     logger.error(f"All AI models exhausted for '{title}'.")
     return None
