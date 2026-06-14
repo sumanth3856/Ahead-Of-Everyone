@@ -19,7 +19,7 @@ async def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
         if progress_callback:
             progress_callback("Finding Stories", 5, "Connecting to news feeds to fetch daily articles...")
         stories = await fetch_dynamic_news(limit, progress_callback)
-        pdf_filename = generate_digest_pdf(stories, progress_callback=progress_callback)
+        pdf_filename = await asyncio.to_thread(generate_digest_pdf, stories, None, progress_callback)
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
             return None
@@ -75,7 +75,7 @@ async def generate_targeted_digest(query: str, limit=5, progress_callback=None) 
         if progress_callback:
             progress_callback("Finding Stories", 5, f"Scraping news feeds for '{query}'...")
         stories = await fetch_targeted_news(query, limit, progress_callback)
-        pdf_filename = generate_digest_pdf(stories, custom_topic=query, progress_callback=progress_callback)
+        pdf_filename = await asyncio.to_thread(generate_digest_pdf, stories, query, progress_callback)
         if not pdf_filename:
             logger.error("No stories scraped or generated.")
             return None

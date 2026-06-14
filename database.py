@@ -236,7 +236,7 @@ async def get_embedding(text: str) -> list[float] | None:
                 "inputs": text,
                 "options": {"wait_for_model": True, "use_cache": True}
             }
-            async with session.post(url, headers=headers, json=payload, timeout=20) as response:
+            async with session.post(url, headers=headers, json=payload, timeout=5) as response:
                 if response.status == 200:
                     data = await response.json()
                     # Check if Hugging Face returned an error indicating the model is loading
@@ -244,6 +244,9 @@ async def get_embedding(text: str) -> list[float] | None:
                         err_msg = data.get("error", "")
                         if "loading" in err_msg.lower():
                             est_time = min(float(data.get("estimated_time", 5)), 10.0)
+                            if est_time > 2.0:
+                                logger.info(f"[DB] HuggingFace model loading time ({est_time}s) is too long. Failing fast to exact cache.")
+                                return None
                             logger.info(f"HuggingFace model is loading. Waiting {est_time}s (attempt {attempt + 1}/3)...")
                             await asyncio.sleep(est_time)
                             continue
@@ -255,19 +258,21 @@ async def get_embedding(text: str) -> list[float] | None:
                         _hf_embedding_cache[text] = data
                         return data
                 elif response.status in (503, 429):
-                    logger.warning(f"HuggingFace transient status {response.status} (attempt {attempt + 1}/3). Retrying after 3s...")
-                    await asyncio.sleep(3)
+                    logger.warning(f"HuggingFace transient status {response.status}. Failing fast to avoid queue bottleneck.")
+                    return None
                 else:
                     text_resp = await response.text()
                     logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
-                    break
+                    return None
         except aiohttp.ClientConnectorError as e:
             logger.warning(f"HuggingFace connection/DNS error: {e}. Skipping embedding query.")
             return None
         except Exception as e:
             logger.error(f"Error fetching embedding from HuggingFace (attempt {attempt + 1}/3): {e}")
-            if attempt < 2:
-                await asyncio.sleep(3)
+            if attempt < 1:
+                await asyncio.sleep(1)
+            else:
+                return None
     return None
 
 async def get_cached_file_id_exact(topic: str) -> str | None:

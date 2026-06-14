@@ -433,11 +433,25 @@ async def queue_worker(app: Application):
         ticker_task = asyncio.create_task(update_loading_message(message, app.bot, progress_state, topic=query))
         
         pdf_filename = None
+        cached_file_id = None
         try:
+            # Double-check cache right before generation to prevent redundant duplicate jobs
             if query:
-                pdf_filename = await generate_targeted_digest(query, 5, progress_callback)
+                cached_file_id = await database.get_cached_file_id_semantic(query)
             else:
-                pdf_filename = await generate_latest_digest(5, progress_callback)
+                cached_file_id = await database.get_cached_file_id_exact("latest")
+                
+            if cached_file_id:
+                logger.info(f"[QUEUE] Double-check hit! Found cached PDF for {target_name}. Skipping generation.")
+                progress_state["phase"] = "Creating PDF"
+                progress_state["done_phases"].update(["Finding Stories", "Writing Summaries"])
+                progress_state["progress"] = 90
+                progress_state["detail"] = "Cached digest retrieved, starting delivery..."
+            else:
+                if query:
+                    pdf_filename = await generate_targeted_digest(query, 5, progress_callback)
+                else:
+                    pdf_filename = await generate_latest_digest(5, progress_callback)
         except Exception as e:
             if "cancelled by user" in str(e).lower():
                 logger.info(f"[QUEUE] User {chat_id} cancelled the generation during processing.")
@@ -459,13 +473,13 @@ async def queue_worker(app: Application):
             back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
             await app.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
         else:
-            if pdf_filename and os.path.exists(pdf_filename):
+            if cached_file_id or (pdf_filename and os.path.exists(pdf_filename)):
                 try:
                     caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
                     if query:
                         caption = f"✅ *SEARCH FINISHED* | Sending your newsletter about *{query}*..."
                         
-                    pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
+                    pretty_filename = os.path.basename(pdf_filename).replace("_", " ") if pdf_filename else "AoE_Tech_News.pdf"
                     if is_subscribed:
                         keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
                     else:
@@ -474,18 +488,23 @@ async def queue_worker(app: Application):
                             [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
                         ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
-                    with open(pdf_filename, "rb") as file:
-                        msg = await app.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
-                        if msg and msg.document:
-                            if query:
-                                await database.set_cached_file_id_semantic(query, msg.document.file_id)
-                            else:
-                                await database.set_cached_digest_file_id("AI", msg.document.file_id, datetime.now(pytz.timezone('Asia/Kolkata')).date())
+                    
+                    if cached_file_id:
+                        msg = await app.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
+                    else:
+                        with open(pdf_filename, "rb") as file:
+                            msg = await app.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
+                            if msg and msg.document:
+                                if query:
+                                    await database.set_cached_file_id_semantic(query, msg.document.file_id)
+                                else:
+                                    await database.set_cached_file_id_exact("latest", msg.document.file_id)
                 finally:
-                    try:
-                        os.remove(pdf_filename)
-                    except Exception as e:
-                        logger.error(f"[QUEUE] Failed to delete {pdf_filename}: {e}")
+                    if pdf_filename:
+                        try:
+                            os.remove(pdf_filename)
+                        except Exception as e:
+                            logger.error(f"[QUEUE] Failed to delete {pdf_filename}: {e}")
             else:
                 logger.warning(f"[QUEUE] Generation failed/not found for {target_name}.")
                 back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
