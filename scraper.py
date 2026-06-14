@@ -13,6 +13,7 @@ import urllib.parse
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
+import json_repair
 
 import config
 
@@ -162,165 +163,84 @@ def try_parse_json(content: str) -> Optional[Dict]:
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
-        # Try finding JSON block manually via regex in case there is text before/after
-        match = re.search(r'\{.*\}', content, re.DOTALL)
-        if match:
-            try:
-                parsed = json.loads(match.group(0))
-            except Exception:
-                pass
+        try:
+            logger.info("Attempting local algorithmic JSON repair...")
+            parsed = json_repair.repair_json(content, return_objects=True)
+        except Exception as e:
+            logger.warning(f"Local JSON repair failed: {e}")
                 
     if parsed and isinstance(parsed, dict):
         for k, v in parsed.items():
-            parsed[k] = clean_markdown_text(v)
+            if isinstance(v, str):
+                parsed[k] = clean_markdown_text(v)
         return parsed
         
     return None
 
-async def request_llm_repair(broken_content: str, model_id: str) -> Optional[Dict]:
-    logger.warning(f"Attempting to repair invalid JSON structure using model {model_id}...")
-    repair_prompt = (
-        "You are a strict JSON fixer. Fix the following invalid JSON string so it is valid JSON according to the schema:\n"
-        "{\n"
-        "  \"category\": \"tag\",\n"
-        "  \"headline\": \"string\",\n"
-        "  \"headline_highlight\": \"string\",\n"
-        "  \"radar_brief\": \"string\",\n"
-        "  \"the_brief\": \"string\",\n"
-        "  \"core_breakdown\": \"string\",\n"
-        "  \"the_edge\": \"string\",\n"
-        "  \"the_deep_dive\": \"string\"\n"
-        "}\n"
-        "Output ONLY valid JSON. Do not include markdown formatting like ```json."
-    )
-    try:
-        response = await client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": repair_prompt},
-                {"role": "user", "content": f"Invalid JSON to fix:\n{broken_content}"}
-            ],
-            timeout=10,
-        )
-        if hasattr(response, 'choices') and response.choices:
-            content = response.choices[0].message.content.strip()
-            parsed = try_parse_json(content)
-            if parsed:
-                logger.info("Successfully repaired JSON via LLM.")
-                return parsed
-    except Exception as e:
-        logger.warning(f"Failed to repair JSON with model {model_id}: {e}")
-    return None
-
 async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
-    """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout.
-    
-    Args:
-        title: The article title.
-        raw_content: The raw text snippet.
-        metadata: Optional dict with keys like 'source', 'upvotes', 'comments', 'sector'.
-    """
-    system_prompt = """You are an elite journalist for 'Ahead of Everyone', covering Technology, Science, Medicine, Agriculture, Climate, and global affairs.
-Your task is to take a raw news snippet and write a premium, highly structured editorial piece.
-You MUST output ONLY valid JSON. Do not include markdown formatting like ```json.
-
-JSON Schema:
-{
-  "category": "A 3-part tag using the SECTOR hint if provided (e.g., '01 . FEATURE . AI INNOVATION')",
-  "headline": "An eye-catching, scroll-stopping headline that rephrases the original to hook the reader",
-  "headline_highlight": "The most important, high-impact word or short phrase from the rewritten headline.",
-  "radar_brief": "A punchy, single-sentence teaser designed for the Table of Contents. Must be strictly under 120 characters to avoid visual truncation.",
-  "the_brief": "A dense 2-sentence paragraph answering Who, What, When, Where, and Why. (Strict limit: 250 characters max).",
-  "core_breakdown": "A tightly woven detailed paragraph of facts (up to 7 sentences). Each sentence must contain highly specific details (metrics, technology names, specific mechanisms) rather than generic fluff. (Strict limit: 600 characters max).",
-  "the_edge": "The absolute juiciest, most impactful insight or futuristic prediction from the news. Distill it into exactly 2-3 short, bold lines. (Strict limit: 250 characters max).",
-  "the_deep_dive": "Extensive, novel details about the news that weren't mentioned above. Act as a comprehensive backgrounder. (Strict limit: 800 characters max)."
-}"""
+    """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout."""
+    system_prompt = """You are an elite journalist for 'Ahead of Everyone'. Output ONLY valid JSON."""
 
     # Build user message with social context if available
     user_msg = f"Title: {title}\nRaw Context: {raw_content}"
     if metadata:
         context_parts = []
-        if metadata.get('source'):
-            context_parts.append(f"Source: {metadata['source']}")
-        if metadata.get('upvotes'):
-            context_parts.append(f"Community Engagement: {metadata['upvotes']} upvotes")
-        if metadata.get('comments'):
-            context_parts.append(f"{metadata['comments']} comments")
-        if metadata.get('sector'):
-            context_parts.append(f"Sector Hint: {metadata['sector']}")
-        if context_parts:
-            user_msg += "\n\nSocial Context: " + ", ".join(context_parts)
+        if metadata.get('source'): context_parts.append(f"Source: {metadata['source']}")
+        if metadata.get('upvotes'): context_parts.append(f"Community Engagement: {metadata['upvotes']} upvotes")
+        if metadata.get('sector'): context_parts.append(f"Sector Hint: {metadata['sector']}")
+        if context_parts: user_msg += "\n\nSocial Context: " + ", ".join(context_parts)
 
     primary_model = config.OPENROUTER_MODEL
     backup_models = [
-        "meta-llama/llama-3.3-70b-instruct:free",       # Llama 3.3 70B (confirmed June 2026)
-        "openrouter/free",                              # Auto-routes to any available free model
-        "deepseek/deepseek-r1-distill-llama-70b:free",  # DeepSeek R1 Distill
-        "qwen/qwen3-30b-a3b:free",                      # Qwen3 30B
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "openrouter/free",
+        "deepseek/deepseek-r1-distill-llama-70b:free",
     ]
 
-    # 1. Primary Model Attempt (Single Try)
+    # 1. Primary Model Attempt
     logger.info(f"[AI] Processing: {title} (Model: {primary_model})")
     try:
         response = await client.chat.completions.create(
             model=primary_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_msg}
-            ],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
             timeout=12,
         )
-        if not hasattr(response, 'choices') or not response.choices:
-            raise ValueError("Invalid OpenRouter response structure")
-            
         content = response.choices[0].message.content.strip()
         parsed = try_parse_json(content)
         if parsed:
             logger.info(f"[AI] Successfully processed: {title} (Model: {primary_model})")
             return parsed
         else:
-            # Retry formatting via LLM if parsing failed
-            repaired = await request_llm_repair(content, primary_model)
-            if repaired:
-                logger.info(f"[AI] Successfully processed: {title} (Model: {primary_model}, repaired)")
-                return repaired
-            else:
-                raise ValueError("JSON parsing and repair failed")
+            raise ValueError("JSON parsing and algorithmic repair failed")
     except Exception as e:
         logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {primary_model})")
 
-    # 2. Sequential Backup Model Attempts
+    # 2. Concurrent Backup Model Racing Engine
+    logger.info(f"Primary model failed. Racing {len(backup_models)} backup models concurrently for '{title}'...")
     
-    for model_id in backup_models:
-        logger.info(f"[AI] Processing: {title} (Model: {model_id})")
+    async def fetch_backup(model_id):
         try:
             response = await client.chat.completions.create(
                 model=model_id,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_msg}
-                ],
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
                 timeout=15,
             )
             if hasattr(response, 'choices') and response.choices:
                 content = response.choices[0].message.content.strip()
-                parsed = try_parse_json(content)
-                if parsed:
-                    logger.info(f"[AI] Successfully processed: {title} (Model: {model_id})")
-                    return parsed
-                else:
-                    repaired = await request_llm_repair(content, model_id)
-                    if repaired:
-                        logger.info(f"[AI] Successfully processed: {title} (Model: {model_id}, repaired)")
-                        return repaired
-                    else:
-                        raise ValueError("JSON parsing and repair failed")
-            else:
-                raise ValueError("Invalid OpenRouter response structure")
-        except Exception as e:
-            logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {model_id})")
+                return try_parse_json(content)
+        except Exception:
+            pass
+        return None
 
-    logger.error(f"[AI] Completely unable to process: {title}. Reason: All models exhausted.")
+    tasks = [asyncio.create_task(fetch_backup(mid)) for mid in backup_models]
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        if result:
+            logger.info(f"[AI] Backup model won the race for '{title}'!")
+            for t in tasks: t.cancel()
+            return result
+            
+    logger.error(f"All AI models exhausted for '{title}'.")
     return None
 
 def strip_html(html_str: str) -> str:

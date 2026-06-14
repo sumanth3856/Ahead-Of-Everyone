@@ -9,3 +9,4 @@ asyncpg
 aiohttp
 pytz
 beautifulsoup4
+json-repair
