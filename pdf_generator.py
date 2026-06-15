@@ -3,10 +3,8 @@ import logging
 import shutil
 import re
 import time
-import math
 from fpdf import FPDF
 from datetime import datetime
-from PIL import Image, ImageFilter
 
 logger = logging.getLogger(__name__)
 
@@ -81,57 +79,7 @@ def sanitize_text(text: str) -> str:
         text = text.encode('latin-1', errors='replace').decode('latin-1')
     return text
 
-def ensure_gradient_image() -> str:
-    """Generates the Option 1 brand purple gradient blur image if missing and returns its path."""
-    path = "assets/cover_gradient_v4.png"
-    if os.path.exists(path) and os.path.getsize(path) > 0:
-        return path
-    try:
-        if not os.path.exists("assets"):
-            os.makedirs("assets")
-        # Use exact A4 proportions (210 x 297 * 4) to prevent any stretching artifacts
-        width, height = 840, 1188
-        img = Image.new("RGB", (width, height), (0, 0, 0))
-        pixels = img.load()
-        cx, cy = width / 2, height * 0.45 
-        
-        center_color = (113, 27, 209)  # Brand Accent Deep Purple
-        outer_color = (0, 0, 0)
-        
-        # Explicit radii in pixels (4 pixels = 1 mm in PDF)
-        radius_x = 336          # 84 mm (Leaves 21 mm black margin on sides)
-        radius_y_top = 356      # 89 mm (Leaves 44.5 mm black margin on top)
-        radius_y_bottom = 472   # 118 mm (Leaves 45.5 mm black margin on bottom)
-        
-        for y in range(height):
-            for x in range(width):
-                dx = x - cx
-                dy = y - cy
-                
-                nx = dx / radius_x
-                if dy < 0:
-                    ny = dy / radius_y_top
-                else:
-                    ny = dy / radius_y_bottom
-                    
-                t = math.sqrt(nx**2 + ny**2)
-                
-                if t >= 1.0:
-                    r, g, b = outer_color
-                else:
-                    t = math.pow(t, 1.8)  # Smooth decay curve
-                    if t > 1.0: t = 1.0
-                    r = int(center_color[0] * (1 - t) + outer_color[0] * t)
-                    g = int(center_color[1] * (1 - t) + outer_color[1] * t)
-                    b = int(center_color[2] * (1 - t) + outer_color[2] * t)
-                
-                pixels[x, y] = (r, g, b)
-                
-        img.save(path)
-        return path
-    except Exception as e:
-        logger.error(f"Failed to generate gradient blur image: {e}")
-        return ""
+
 
 def balance_quotes(text: str) -> str:
     """Balances double and single quotes in a string, especially after truncation."""
@@ -349,10 +297,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_fill_color(*BLACK)
     pdf.rect(0, 0, 210, 297, 'F')
     
-    # Draw centered background gradient blur image
-    grad_path = ensure_gradient_image()
-    if grad_path:
-        pdf.image(grad_path, x=0, y=0, w=210, h=297)
+    # No gradient, solid black background
     
     # Highlighted Date at Top Right
     pdf.set_y(12)
@@ -388,11 +333,17 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
         
     # Title - Centered, massive
     draw_text(pdf, "AHEAD OF", style="B", size=52, color=WHITE, y=50, align="C", h=18)
-    draw_text(pdf, "EVERYONE", style="B", size=52, color=WHITE, align="C", h=18)
+    draw_text(pdf, "EVERYONE", style="B", size=52, color=BRAND_ACCENT, align="C", h=18)
     
     # Tagline - Centered
     tagline = f"CURATED INTELLIGENCE BRIEFING: {custom_topic.upper()}" if custom_topic else "CURATING TOMORROW\'S INNOVATIONS, TODAY."
-    draw_text(pdf, tagline, size=12, color=WHITE, y=90, align="C", h=8)
+    pdf.set_y(90)
+    pdf.set_font("Montserrat", "", 12)
+    w = pdf.get_string_width(tagline) + 8
+    pdf.set_x((210 - w) / 2)
+    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.set_text_color(*WHITE)
+    pdf.cell(w, 8, tagline, align="C", ln=1, fill=True)
     
     # Vertical Stripe (Anchor for Feature Block)
     # x=12, w=5, starting from y=130 down to the bottom margin
@@ -510,7 +461,7 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None, synth
     t_lines = pdf.multi_cell(176, 5.5, takeaway_text, split_only=True)
     takeaway_box_h = len(t_lines) * 5.5 + 15
     
-    takeaway_y = 285 - takeaway_box_h
+    takeaway_y = 270 - takeaway_box_h
     if takeaway_y < y_ptr + 4:
         takeaway_y = y_ptr + 4
         
@@ -519,8 +470,11 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None, synth
     
     pdf.set_xy(17, takeaway_y + 4)
     pdf.set_font("Montserrat", "B", 8.5)
-    pdf.set_text_color(*BRAND_ACCENT)
-    pdf.cell(0, 5, "IF YOU TAKE ONE THING FROM THIS", ln=1)
+    pdf.set_text_color(*WHITE)
+    pdf.set_fill_color(*BRAND_ACCENT)
+    text = "IF YOU TAKE ONE THING FROM THIS"
+    w = pdf.get_string_width(text) + 6
+    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
     
     pdf.set_xy(17, takeaway_y + 10)
     pdf.set_font("Montserrat", "B", 10.5)
@@ -541,7 +495,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     # Category Indicator
     pdf.set_y(20)
-    pdf.set_x(24)
+    pdf.set_x(15)  # Moved left to start next to the purple indicator
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*BRAND_ACCENT)
     cat_text = f"{str(index).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
@@ -637,8 +591,14 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     pdf.set_xy(17, wy + 4)
     pdf.set_font("Montserrat", "B", 9)
-    pdf.set_text_color(*BRAND_ACCENT)
-    pdf.cell(0, 5, "THE EDGE", ln=1)
+    pdf.set_text_color(*BLACK)
+    pdf.set_fill_color(245, 245, 245)
+    text = "THE EDGE"
+    w = pdf.get_string_width(text) + 6  # Precise 3mm padding on both sides
+    
+    # We use align="C" to perfectly horizontally center the text in the cell
+    # And we use a balanced cell height to visually center it vertically
+    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
     
     pdf.set_xy(17, wy + 10)
     pdf.set_font("Montserrat", "B", 12)
@@ -651,25 +611,34 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     wy = pdf.get_y()
     leftover_height = 275 - wy
     
-    if leftover_height < 10:
+    if leftover_height < 15:
         return
         
-    pdf.set_x(12)
-    pdf.set_font("Montserrat", "I", 10)
-    pdf.set_text_color(*BRAND_ACCENT)
-    pdf.set_fill_color(248, 248, 250)
-    
     raw_deep_dive = story.get('deep_dive', story.get('the_deep_dive', ''))
-    deep_dive_text = f" DEEP DIVE: {raw_deep_dive}"
     
-    max_lines = int(leftover_height / 7)
+    # Draw DEEP DIVE heading
+    pdf.set_xy(16, wy)
+    pdf.set_font("Montserrat", "B", 9)
+    pdf.set_text_color(*WHITE)
+    pdf.set_fill_color(*BRAND_ACCENT)
+    text = "DEEP DIVE"
+    w = pdf.get_string_width(text) + 6
+    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
+    
+    # Draw DEEP DIVE text below heading
+    wy_text = wy + 6
+    leftover_height_text = 275 - wy_text
+    max_lines = int(leftover_height_text / 6.5)
     max_chars = max_lines * 105
     
-    if len(deep_dive_text) > max_chars:
-        deep_dive_text = deep_dive_text[:max_chars - 3] + "..."
+    if len(raw_deep_dive) > max_chars:
+        raw_deep_dive = raw_deep_dive[:max_chars - 3] + "..."
         
-    pdf.set_xy(12, wy)
-    pdf.multi_cell(186, 7, deep_dive_text, align="J", fill=True)
+    pdf.set_xy(16, wy_text)
+    pdf.set_font("Montserrat", "I", 10)
+    pdf.set_text_color(*BLACK)
+    pdf.set_fill_color(248, 248, 250)
+    pdf.multi_cell(176, 6.5, raw_deep_dive, align="J", fill=True)
 
 def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str, synthesis: dict = None):
     draw_toc_page(pdf, stories, custom_topic, synthesis)
@@ -681,10 +650,7 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.set_fill_color(*BLACK)
     pdf.rect(0, 0, 210, 297, 'F')
     
-    # Draw centered background gradient blur image
-    grad_path = ensure_gradient_image()
-    if grad_path:
-        pdf.image(grad_path, x=0, y=0, w=210, h=297)
+    # No gradient, solid black background
     
     pdf.set_y(120)
     pdf.set_font("Montserrat", "B", 42)
@@ -693,8 +659,8 @@ def draw_conclusion_page(pdf: CustomPDF):
     
     pdf.set_y(145)
     pdf.set_font("Montserrat", "B", 12)
-    text = " MISSION ACCOMPLISHED. SEE YOU TOMORROW. "
-    w = pdf.get_string_width(text) + 6
+    text = "MISSION ACCOMPLISHED. SEE YOU TOMORROW."
+    w = pdf.get_string_width(text) + 8
     pdf.set_x((210 - w) / 2)
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)

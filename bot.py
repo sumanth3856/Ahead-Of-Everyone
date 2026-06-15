@@ -84,7 +84,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error("Exception while handling an update:", exc_info=context.error)
 
 def get_back_keyboard():
-    return get_back_keyboard()
+    keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+    return InlineKeyboardMarkup(keyboard)
 
 def get_main_menu(first_name: str, is_subscribed: bool = False):
     welcome_text = (
