@@ -61,7 +61,7 @@ from config import BRAND_NAME
 # Setup logging
 logging.Formatter.converter = lambda *args: datetime.now(pytz.timezone('Asia/Kolkata')).timetuple()
 logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="[%(asctime)s] | %(levelname)-8s | %(module)-12s | %(message)s",
     level=logging.INFO
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)

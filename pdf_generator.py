@@ -18,9 +18,9 @@ CAT_CLEAN_RE = re.compile(r'^[\d\s\.]+')
 
 import urllib.request
 
-MONTSERRAT_REG_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Regular.ttf"
-MONTSERRAT_BOLD_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Bold.ttf"
-MONTSERRAT_ITALIC_URL = "https://github.com/google/fonts/raw/main/ofl/montserrat/static/Montserrat-Italic.ttf"
+MONTSERRAT_REG_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/static/Montserrat-Regular.ttf"
+MONTSERRAT_BOLD_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/static/Montserrat-Bold.ttf"
+MONTSERRAT_ITALIC_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/static/Montserrat-Italic.ttf"
 
 def ensure_font_exists(filename: str, url: str) -> bool:
     font_path = f"assets/{filename}"

@@ -4,7 +4,7 @@ import sys
 # Configure Logging for DevOps observability
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format='[%(asctime)s] | %(levelname)-8s | %(module)-12s | %(message)s',
     handlers=[
         logging.FileHandler("daily_digest.log"),
         logging.StreamHandler(sys.stdout)

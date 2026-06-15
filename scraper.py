@@ -294,10 +294,31 @@ async def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
     return items
 
 async def fetch_full_article_text(url: str) -> str:
-    """Scrapes the full article text from the URL as a fallback."""
-    logger.info(f"Attempting deep scrape for fallback text: {url}")
+    """Scrapes the full article text from the URL using Jina Reader (with BeautifulSoup fallback)."""
+    logger.info(f"Attempting deep scrape for text using Jina Reader: {url}")
+    session = await get_http_session()
+    
+    # Attempt 1: Jina Reader API (bypass JS/Bot protections)
     try:
-        session = await get_http_session()
+        jina_url = f"https://r.jina.ai/{url}"
+        async with session.get(
+            jina_url,
+            headers={
+                "Accept": "text/plain",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            timeout=15
+        ) as resp:
+            resp.raise_for_status()
+            text = await resp.text()
+            if len(text.strip()) > 50:
+                logger.info(f"Successfully scraped with Jina Reader: {url}")
+                return text
+    except Exception as e:
+        logger.warning(f"Jina Reader scrape failed for {url}: {e}. Falling back to standard scrape.")
+
+    # Attempt 2: Standard BeautifulSoup Fallback
+    try:
         async with session.get(
             url,
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
@@ -314,9 +335,11 @@ async def fetch_full_article_text(url: str) -> str:
             return " ".join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
             
         text = await asyncio.to_thread(parse_html, text_content)
+        if len(text.strip()) > 50:
+             logger.info(f"Successfully scraped with standard fallback: {url}")
         return text
     except Exception as e:
-        logger.warning(f"Deep scrape failed for {url}: {e}")
+        logger.warning(f"Fallback scrape also failed for {url}: {e}")
         return ""
 
 async def fetch_story_details(item: Dict) -> Optional[Dict]:
