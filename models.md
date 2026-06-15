@@ -1,0 +1,317 @@
+# OpenRouter Free Models Reference
+> **Fetched:** June 15, 2026 — 10:24 AM IST  
+> **Source:** `https://openrouter.ai/api/v1/models` (live API)  
+> **Total Free Models Confirmed:** 26  
+> **Rate Limits:** ~20 requests/min · ~200 requests/day per model  
+> **Machine-readable data:** [`models.json`](./models.json)
+
+---
+
+## ⚠️ Important Notes
+- All models listed here have `pricing.prompt = "0"` — verified truly free as of the fetch date.
+- OpenRouter shifts models between free and paid tiers without notice. **Re-verify periodically.**
+- Append `:free` to a model ID to force the free variant (e.g., `meta-llama/llama-3.3-70b-instruct:free`).
+- The special router `openrouter/free` automatically picks any available free model at random.
+
+---
+
+## Free Models — Full Structured List
+
+```json
+{
+  "metadata": {
+    "fetched_at_ist": "2026-06-15 10:24 AM IST",
+    "source": "https://openrouter.ai/api/v1/models",
+    "total_free_models": 26,
+    "note": "All models have pricing.prompt = 0. Rate limits: ~20 req/min, ~200 req/day per model."
+  },
+  "free_models": [
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "name": "NVIDIA: Nemotron 3 Ultra 550B A55B",
+      "provider": "NVIDIA",
+      "context_window": 1000000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["reasoning", "heavy-tasks", "long-documents"],
+      "notes": "Largest free model available. 550B params. Best for complex reasoning and multi-step tasks."
+    },
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "name": "NVIDIA: Nemotron 3 Super 120B A12B",
+      "provider": "NVIDIA",
+      "context_window": 1000000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["reasoning", "structured-output", "heavy-tasks", "recommended-primary"],
+      "notes": "120B params. 1M context. Excellent at structured JSON output. NVIDIA-backed, reliable."
+    },
+    {
+      "id": "qwen/qwen3-coder:free",
+      "name": "Qwen: Qwen3 Coder 480B A35B",
+      "provider": "Alibaba / Qwen",
+      "context_window": 1048576,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["coding", "structured-output", "1M-context"],
+      "notes": "480B params. Coding-optimized. Largest context window of all free models (1,048,576). Strong JSON."
+    },
+    {
+      "id": "qwen/qwen3-next-80b-a3b-instruct:free",
+      "name": "Qwen: Qwen3 Next 80B A3B Instruct",
+      "provider": "Alibaba / Qwen",
+      "context_window": 262144,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["instruction-following", "general-purpose"],
+      "notes": "80B params. MoE architecture. 262K context. Good general instruction following."
+    },
+    {
+      "id": "google/gemma-4-31b-it:free",
+      "name": "Google: Gemma 4 31B Instruct",
+      "provider": "Google",
+      "context_window": 262144,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["multimodal", "tool-calling", "structured-output", "recommended-backup"],
+      "notes": "31B params. 262K context. Supports tool calling. Google-backed, very reliable."
+    },
+    {
+      "id": "google/gemma-4-26b-a4b-it:free",
+      "name": "Google: Gemma 4 26B A4B",
+      "provider": "Google",
+      "context_window": 262144,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["multimodal", "efficient", "general-purpose"],
+      "notes": "26B MoE params. 262K context. Efficient variant of Gemma 4."
+    },
+    {
+      "id": "openai/gpt-oss-120b:free",
+      "name": "OpenAI: GPT-OSS 120B",
+      "provider": "OpenAI",
+      "context_window": 131072,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["structured-output", "instruction-following", "recommended-backup"],
+      "notes": "OpenAI's open-source 120B model. Excellent instruction following and JSON output quality."
+    },
+    {
+      "id": "openai/gpt-oss-20b:free",
+      "name": "OpenAI: GPT-OSS 20B",
+      "provider": "OpenAI",
+      "context_window": 131072,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["fast", "efficient", "general-purpose"],
+      "notes": "Lighter 20B version. Faster inference than 120B. Good for high-frequency tasks."
+    },
+    {
+      "id": "nousresearch/hermes-3-llama-3.1-405b:free",
+      "name": "Nous: Hermes 3 405B Instruct",
+      "provider": "Nous Research",
+      "context_window": 131072,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["instruction-following", "complex-tasks", "large-model"],
+      "notes": "405B params. Hermes fine-tuned on Llama 3.1. Strong at complex multi-step instructions."
+    },
+    {
+      "id": "meta-llama/llama-3.3-70b-instruct:free",
+      "name": "Meta: Llama 3.3 70B Instruct",
+      "provider": "Meta",
+      "context_window": 131072,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["instruction-following", "structured-output", "battle-tested", "recommended-backup"],
+      "notes": "70B params. 131K context. Extremely battle-tested. Currently in project backup chain."
+    },
+    {
+      "id": "nex-agi/nex-n2-pro:free",
+      "name": "Nex AGI: Nex-N2-Pro",
+      "provider": "Nex AGI",
+      "context_window": 262144,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["general-purpose"],
+      "notes": "262K context. General purpose model from Nex AGI."
+    },
+    {
+      "id": "poolside/laguna-m.1:free",
+      "name": "Poolside: Laguna M.1",
+      "provider": "Poolside",
+      "context_window": 262144,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["coding", "agentic", "complex-tasks"],
+      "notes": "262K context. Flagship coding and agentic model from Poolside."
+    },
+    {
+      "id": "poolside/laguna-xs.2:free",
+      "name": "Poolside: Laguna XS.2",
+      "provider": "Poolside",
+      "context_window": 262144,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["coding", "agentic", "lightweight"],
+      "notes": "Lighter variant of Laguna. 262K context. Good for fast agentic tasks."
+    },
+    {
+      "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+      "name": "NVIDIA: Nemotron 3 Nano 30B A3B",
+      "provider": "NVIDIA",
+      "context_window": 256000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["efficient", "fast", "general-purpose"],
+      "notes": "30B MoE (3B active). 256K context. Fast inference with large context."
+    },
+    {
+      "id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "name": "NVIDIA: Nemotron 3 Nano Omni 30B Reasoning",
+      "provider": "NVIDIA",
+      "context_window": 256000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["reasoning", "efficient", "omni"],
+      "notes": "Omni variant with reasoning. 256K context. Good for chain-of-thought tasks."
+    },
+    {
+      "id": "nvidia/nemotron-nano-12b-v2-vl:free",
+      "name": "NVIDIA: Nemotron Nano 12B V2 VL",
+      "provider": "NVIDIA",
+      "context_window": 128000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["vision", "multimodal", "lightweight"],
+      "notes": "12B vision-language model. Suitable for image understanding tasks."
+    },
+    {
+      "id": "nvidia/nemotron-nano-9b-v2:free",
+      "name": "NVIDIA: Nemotron Nano 9B V2",
+      "provider": "NVIDIA",
+      "context_window": 32000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["lightweight", "fast"],
+      "notes": "Small 9B model. 32K context only. Use for simple, short-text tasks only."
+    },
+    {
+      "id": "nvidia/nemotron-3.5-content-safety:free",
+      "name": "NVIDIA: Nemotron 3.5 Content Safety",
+      "provider": "NVIDIA",
+      "context_window": 128000,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["content-moderation", "safety-classification"],
+      "notes": "Specialized for content safety classification only. Not a general-purpose LLM."
+    },
+    {
+      "id": "openrouter/owl-alpha",
+      "name": "OpenRouter: Owl Alpha",
+      "provider": "OpenRouter",
+      "context_window": 1048576,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["general-purpose", "openrouter-native", "1M-context"],
+      "notes": "OpenRouter's own model. 1M context. Alpha stage — may be experimental/unstable."
+    },
+    {
+      "id": "meta-llama/llama-3.2-3b-instruct:free",
+      "name": "Meta: Llama 3.2 3B Instruct",
+      "provider": "Meta",
+      "context_window": 131072,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["ultra-lightweight", "fast", "simple-tasks"],
+      "notes": "3B params only. Ultra-fast but limited quality for complex tasks."
+    },
+    {
+      "id": "mistralai/magistral-medium-2509",
+      "name": "Mistral: Magistral Medium 2509",
+      "provider": "Mistral AI",
+      "context_window": 0,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["reasoning", "mistral"],
+      "notes": "Context window unspecified in API. Reasoning-focused. Verify availability before use."
+    },
+    {
+      "id": "liquid/lfm-2.5-1.2b-thinking:free",
+      "name": "LiquidAI: LFM2.5-1.2B-Thinking",
+      "provider": "Liquid AI",
+      "context_window": 32768,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["thinking", "reasoning", "tiny"],
+      "notes": "1.2B params. 32K context. Use only for very simple tasks."
+    },
+    {
+      "id": "liquid/lfm-2.5-1.2b-instruct:free",
+      "name": "LiquidAI: LFM2.5-1.2B-Instruct",
+      "provider": "Liquid AI",
+      "context_window": 32768,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["instruction-following", "tiny"],
+      "notes": "1.2B params. 32K context. Extremely fast but limited capability."
+    },
+    {
+      "id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+      "name": "Venice: Uncensored Dolphin Mistral 24B",
+      "provider": "Cognitive Computations",
+      "context_window": 32768,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["uncensored", "general-purpose"],
+      "notes": "24B uncensored model. 32K context. Avoid for production news bots."
+    },
+    {
+      "id": "google/lyria-3-pro-preview",
+      "name": "Google: Lyria 3 Pro Preview",
+      "provider": "Google",
+      "context_window": 1048576,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["audio-generation", "NOT-text-LLM"],
+      "notes": "AUDIO GENERATION ONLY. Not a text LLM. Do not use for text processing tasks."
+    },
+    {
+      "id": "google/lyria-3-clip-preview",
+      "name": "Google: Lyria 3 Clip Preview",
+      "provider": "Google",
+      "context_window": 1048576,
+      "pricing": { "prompt": "0", "completion": "0" },
+      "tags": ["audio-generation", "NOT-text-LLM"],
+      "notes": "AUDIO GENERATION ONLY. Not a text LLM. Do not use for text processing tasks."
+    }
+  ],
+  "project_recommendations": {
+    "project": "AoE Daily Tech Digest Bot",
+    "use_case": "Structured JSON extraction from tech news articles",
+    "suggested_model_chain": [
+      { "priority": 1, "role": "Primary",    "id": "nvidia/nemotron-3-super-120b-a12b:free",  "reason": "Large, NVIDIA-backed, 1M context, excellent structured output" },
+      { "priority": 2, "role": "Fallback 1", "id": "openai/gpt-oss-120b:free",                "reason": "OpenAI-quality JSON, 131K context, very reliable" },
+      { "priority": 3, "role": "Fallback 2", "id": "meta-llama/llama-3.3-70b-instruct:free", "reason": "Battle-tested, already in current chain, highly stable" },
+      { "priority": 4, "role": "Fallback 3", "id": "google/gemma-4-31b-it:free",              "reason": "Google-backed, 262K context, supports tool calling" },
+      { "priority": 5, "role": "Last Resort","id": "openrouter/free",                         "reason": "Meta-router — dynamically picks any available free model" }
+    ],
+    "models_to_avoid_for_this_project": [
+      "google/lyria-3-pro-preview",
+      "google/lyria-3-clip-preview",
+      "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+      "liquid/lfm-2.5-1.2b-thinking:free",
+      "liquid/lfm-2.5-1.2b-instruct:free",
+      "meta-llama/llama-3.2-3b-instruct:free",
+      "nvidia/nemotron-3.5-content-safety:free"
+    ]
+  }
+}
+```
+
+---
+
+## Quick-Reference Summary Table
+
+| Priority | Role | Model ID | Context | Provider |
+|:---:|---|---|---:|---|
+| 🥇 1 | Primary | `nvidia/nemotron-3-super-120b-a12b:free` | 1,000,000 | NVIDIA |
+| 🥈 2 | Fallback 1 | `openai/gpt-oss-120b:free` | 131,072 | OpenAI |
+| 🥉 3 | Fallback 2 | `meta-llama/llama-3.3-70b-instruct:free` | 131,072 | Meta |
+| 4 | Fallback 3 | `google/gemma-4-31b-it:free` | 262,144 | Google |
+| 5 | Last Resort | `openrouter/free` | Dynamic | OpenRouter |
+
+---
+
+## Provider Breakdown
+
+| Provider | # Free Models |
+|---|:---:|
+| NVIDIA | 7 |
+| Google | 4 |
+| OpenAI | 2 |
+| Meta | 2 |
+| Qwen (Alibaba) | 2 |
+| Poolside | 2 |
+| Liquid AI | 2 |
+| Nous Research | 1 |
+| Mistral AI | 1 |
+| Nex AGI | 1 |
+| OpenRouter | 1 |
+| Cognitive Computations | 1 |
+| **Total** | **26** |

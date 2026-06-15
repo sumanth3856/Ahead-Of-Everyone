@@ -192,9 +192,10 @@ async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = 
 
     primary_model = config.OPENROUTER_MODEL
     backup_models = [
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "openrouter/free",
-        "deepseek/deepseek-r1-distill-llama-70b:free",
+        "openai/gpt-oss-120b:free",              # Fallback 1: OpenAI-quality JSON, 131K context
+        "meta-llama/llama-3.3-70b-instruct:free", # Fallback 2: Battle-tested, highly stable
+        "google/gemma-4-31b-it:free",            # Fallback 3: Google-backed, 262K context
+        "openrouter/free",                       # Last Resort: Meta-router
     ]
 
     # 1. Primary Model Attempt

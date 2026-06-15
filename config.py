@@ -27,7 +27,7 @@ import os
 
 # OpenRouter / AI Settings
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/free")  # Meta-router that automatically selects a working free model
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")  # Large, NVIDIA-backed primary model
 
 # Color Palette (Luxury Slate & Neon Green)
 COLOR_DARK = (10, 15, 29)        
