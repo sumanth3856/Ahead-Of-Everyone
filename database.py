@@ -34,7 +34,12 @@ async def get_http_session() -> aiohttp.ClientSession:
     global _session
     async with _session_lock:
         if _session is None or _session.closed:
-            connector = aiohttp.TCPConnector(use_dns_cache=True, family=socket.AF_INET)
+            connector = aiohttp.TCPConnector(
+                use_dns_cache=True,
+                family=socket.AF_INET,
+                limit=50,
+                keepalive_timeout=60
+            )
             _session = aiohttp.ClientSession(connector=connector)
         return _session
 
@@ -96,6 +101,13 @@ async def init_db():
                     topic TEXT PRIMARY KEY,
                     file_id TEXT NOT NULL,
                     generated_date_ist DATE NOT NULL
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS hf_embeddings_cache (
+                    text TEXT PRIMARY KEY,
+                    embedding DOUBLE PRECISION[] NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             try:
@@ -227,6 +239,17 @@ async def get_embedding(text: str) -> list[float] | None:
     if text in _hf_embedding_cache:
         return _hf_embedding_cache[text]
         
+    # Check DB cache first
+    try:
+        row = await execute_with_retry("SELECT embedding FROM hf_embeddings_cache WHERE text = $1", text, is_fetchrow=True)
+        if row:
+            embedding = list(row['embedding'])
+            _hf_embedding_cache[text] = embedding
+            logger.info(f"[DB] HuggingFace embedding cache hit for '{text[:30]}...'")
+            return embedding
+    except Exception as e:
+        logger.warning(f"Failed to lookup embedding in DB cache: {e}")
+        
     url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
     headers = {}
     hf_token = os.getenv("HF_TOKEN")
@@ -255,12 +278,22 @@ async def get_embedding(text: str) -> list[float] | None:
                             await asyncio.sleep(est_time)
                             continue
                     
+                    embedding_result = None
                     if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-                        _hf_embedding_cache[text] = data[0]
-                        return data[0]
+                        embedding_result = data[0]
                     elif isinstance(data, list) and len(data) > 0:
-                        _hf_embedding_cache[text] = data
-                        return data
+                        embedding_result = data
+                        
+                    if embedding_result:
+                        _hf_embedding_cache[text] = embedding_result
+                        try:
+                            await execute_with_retry("""
+                                INSERT INTO hf_embeddings_cache (text, embedding) VALUES ($1, $2)
+                                ON CONFLICT (text) DO NOTHING
+                            """, text, embedding_result)
+                        except Exception as db_err:
+                            logger.warning(f"Failed to save embedding to DB cache: {db_err}")
+                        return embedding_result
                 elif response.status in (503, 429):
                     logger.warning(f"HuggingFace transient status {response.status}. Failing fast to avoid queue bottleneck.")
                     return None

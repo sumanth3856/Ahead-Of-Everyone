@@ -32,7 +32,7 @@ async def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
             logger.error("Failed to generate PDF.")
             return None
         try:
-            await asyncio.to_thread(register_sent_stories, stories)
+            await register_sent_stories(stories)
         except Exception as reg_err:
             logger.error(f"Failed to register sent stories: {reg_err}")
         return pdf_filename

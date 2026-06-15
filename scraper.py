@@ -16,6 +16,7 @@ from bs4 import BeautifulSoup
 import json_repair
 
 import config
+from database import get_http_session
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -41,39 +42,33 @@ HTML_STRIP_RE = re.compile(r'<[^>]+>')
 WORD_TOKEN_RE = re.compile(r'\w+')
 HEADLINE_CLEAN_RE = re.compile(r'\s+[-|]\s+[^|-]+$')
 
-# Global aiohttp session to enable HTTP Keep-Alive connection pooling
-_http_session = None
-
-async def get_http_session() -> aiohttp.ClientSession:
-    global _http_session
-    if _http_session is None or _http_session.closed:
-        connector = aiohttp.TCPConnector(limit=50, keepalive_timeout=60)
-        _http_session = aiohttp.ClientSession(connector=connector)
-    return _http_session
 
 
-
-def load_sent_registry() -> List[Dict]:
-    if os.path.exists(REGISTRY_FILE):
-        try:
-            with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
-            logger.error(f"Error loading registry, backing up corrupted file: {e}")
+async def load_sent_registry() -> List[Dict]:
+    def _load():
+        if os.path.exists(REGISTRY_FILE):
             try:
-                corrupted_backup = f"{REGISTRY_FILE}.corrupted.{int(time.time())}"
-                os.rename(REGISTRY_FILE, corrupted_backup)
-                logger.info(f"Renamed corrupted registry file to {corrupted_backup}")
-            except Exception as backup_err:
-                logger.error(f"Could not rename corrupted registry: {backup_err}")
-    return []
+                with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                logger.error(f"Error loading registry, backing up corrupted file: {e}")
+                try:
+                    corrupted_backup = f"{REGISTRY_FILE}.corrupted.{int(time.time())}"
+                    os.rename(REGISTRY_FILE, corrupted_backup)
+                    logger.info(f"Renamed corrupted registry file to {corrupted_backup}")
+                except Exception as backup_err:
+                    logger.error(f"Could not rename corrupted registry: {backup_err}")
+        return []
+    return await asyncio.to_thread(_load)
 
-def save_sent_registry(registry: List[Dict]) -> None:
-    try:
-        with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-            json.dump(registry, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        logger.error(f"Error saving registry: {e}")
+async def save_sent_registry(registry: List[Dict]) -> None:
+    def _save():
+        try:
+            with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
+                json.dump(registry, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error saving registry: {e}")
+    await asyncio.to_thread(_save)
 
 def prune_registry(registry: List[Dict]) -> List[Dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=REGISTRY_RETENTION_DAYS)
@@ -120,8 +115,8 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
                 return True
     return False
 
-def register_sent_stories(stories: List[Dict]) -> None:
-    registry = load_sent_registry()
+async def register_sent_stories(stories: List[Dict]) -> None:
+    registry = await load_sent_registry()
     now_str = datetime.now(timezone.utc).isoformat()
     for story in stories:
         registry.append({
@@ -130,7 +125,7 @@ def register_sent_stories(stories: List[Dict]) -> None:
             "timestamp": now_str
         })
     registry = prune_registry(registry)
-    save_sent_registry(registry)
+    await save_sent_registry(registry)
     logger.info(f"Registered {len(stories)} articles in registry and pruned old entries.")
 
 def clean_json_content(content: str) -> str:
@@ -735,7 +730,7 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
       5. Best remaining from any pool
     """
     logger.info("[SCRAPER] === Phase 2 Omnichannel Fetch Starting ===")
-    registry = load_sent_registry()
+    registry = await load_sent_registry()
     
     # ── 1. Fetch all sources in parallel ─────────────────────────────────
     tech_rss_feeds = [
