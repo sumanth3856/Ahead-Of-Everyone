@@ -83,6 +83,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         logger.error("Exception while handling an update:", exc_info=context.error)
 
+def get_back_keyboard():
+    return get_back_keyboard()
+
 def get_main_menu(first_name: str, is_subscribed: bool = False):
     welcome_text = (
         f"*[ MAIN MENU ]*\n\n"
@@ -181,12 +184,12 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
                 if "not modified" not in str(edit_err).lower():
                     logger.warning(f"Failed to edit progress message: {edit_err}")
             
-            await asyncio.sleep(2)
+            await asyncio.sleep(6)
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.error(f"Error in update_loading_message: {e}")
-            await asyncio.sleep(2)
+            await asyncio.sleep(6)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -252,7 +255,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ]
             await edit_or_reply(text="✅ *SUBSCRIBED* | You will now receive daily news updates automatically.", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+            back_keyboard = get_back_keyboard()
             await edit_or_reply(text="ℹ️ *ALREADY SUBSCRIBED* | You are already receiving daily updates.", reply_markup=back_keyboard)
             
     elif action == "unsubscribe":
@@ -264,7 +267,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ]
             await edit_or_reply(text="🔕 *UNSUBSCRIBED* | You will no longer receive daily news automatically.", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+            back_keyboard = get_back_keyboard()
             await edit_or_reply(text="ℹ️ *NOT SUBSCRIBED* | You are not currently subscribed to daily updates.", reply_markup=back_keyboard)
             
     elif action == "about":
@@ -391,9 +394,9 @@ async def update_queue_status(message, bot, chat_id: int, queue_list: list):
             )
             
             await message.edit_text(text=text, parse_mode="Markdown")
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(6)
         except Exception:
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(6)
 
 async def enqueue_generation(chat_id: int, query: Optional[str], message, app: Application, is_subscribed: bool):
     """Adds a generation job to the global FIFO queue."""
@@ -490,7 +493,7 @@ async def queue_worker(app: Application):
             app.bot_data.get("active_user_generations", {}).pop(chat_id, None)
             
         if app.bot_data.get("active_user_generations", {}).get(chat_id, False):
-            back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+            back_keyboard = get_back_keyboard()
             await app.bot.send_message(chat_id=chat_id, text="🛑 *GENERATION ABORTED*", reply_markup=back_keyboard, parse_mode="Markdown")
         else:
             if cached_file_id or (pdf_filename and os.path.exists(pdf_filename)):
@@ -527,7 +530,7 @@ async def queue_worker(app: Application):
                             logger.error(f"[QUEUE] Failed to delete {pdf_filename}: {e}")
             else:
                 logger.warning(f"[QUEUE] Generation failed/not found for {target_name}.")
-                back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+                back_keyboard = get_back_keyboard()
                 await app.bot.send_message(chat_id=chat_id, text=f"😔 *NOT FOUND* | Sorry, I couldn't find enough news right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
                 
         logger.info(f"[QUEUE] Finished processing job {job['job_id']}")
@@ -542,7 +545,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     logger.info(f"[BOT] User {chat_id} invoked /news with query: '{query}'")
     
     if not query:
-        back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+        back_keyboard = get_back_keyboard()
         await update.message.reply_text("🤔 *Oops! You forgot the topic!*\nPlease tell me what you want to learn about! \nExample: `/news quantum computing` 🚀", reply_markup=back_keyboard, parse_mode="Markdown")
         return
         
@@ -758,7 +761,7 @@ async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_
         "Sorry, I don't understand that command. Use `/start` to see the main menu, or find news on a specific topic using `/news <topic>`.\n\n"
         "Example: `/news new smartphones`"
     )
-    back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
+    back_keyboard = get_back_keyboard()
     await update.message.reply_text(text, reply_markup=back_keyboard, parse_mode="Markdown")
 
 async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: bool = False, progress_callback=None) -> None:

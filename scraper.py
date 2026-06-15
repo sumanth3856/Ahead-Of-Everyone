@@ -86,7 +86,7 @@ def prune_registry(registry: List[Dict]) -> List[Dict]:
             if item_time >= cutoff:
                 pruned.append(item)
         except Exception as e:
-            pruned.append(item)
+            logger.warning(f"Dropping corrupt registry item during prune: {e}")
     return pruned
 
 def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
@@ -330,7 +330,7 @@ async def fetch_full_article_text(url: str) -> str:
                 logger.info(f"Successfully scraped with Jina Reader: {url}")
                 return text
     except Exception as e:
-        logger.warning(f"Jina Reader scrape failed for {url}: {e}. Falling back to standard scrape.")
+        logger.info(f"Jina Reader scrape failed for {url}: {e}. Falling back to standard scrape.")
 
     # Attempt 2: Standard BeautifulSoup Fallback
     try:
@@ -378,7 +378,7 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         cleaned_text = cleaned_text[:15000]
     
     if not cleaned_text or len(cleaned_text) < 100:
-        logger.warning(f"[SCRAPER] Full text extraction failed or too short, falling back to RSS snippet for: {item['url']}")
+        logger.info(f"[SCRAPER] Full text extraction failed or too short, falling back to RSS snippet for: {item['url']}")
         cleaned_text = item['raw_text']
         
     logger.info(f"[SCRAPER] Cleaned text ready ({len(cleaned_text)} chars). Sending to AI model...")
@@ -391,7 +391,20 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
     clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
     highlight = clean_headline.split()[0] if clean_headline else "NEWS"
     
-    # Helper to check if a value is empty or purely quotes/whitespace
+    def fallback_assign(structured_data, key, text_source, limit, default_msg):
+        if is_empty_value(structured_data.get(key)):
+            if text_source:
+                text = " ".join(text_source.split())
+                if len(text) > limit:
+                    text = text[:limit-3] + "..."
+                structured_data[key] = text
+            else:
+                structured_data[key] = default_msg
+        else:
+            structured_data[key] = " ".join(str(structured_data[key]).strip().strip('\'"').split())
+            if len(structured_data[key]) > limit:
+                structured_data[key] = structured_data[key][:limit-3] + "..."
+
     def is_empty_value(val) -> bool:
         if val is None:
             return True
@@ -457,29 +470,16 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         structured_data["the_brief"] = str(structured_data["the_brief"]).strip().strip('\'"')
 
     # Core Breakdown fallback
-    if is_empty_value(structured_data.get("core_breakdown")):
-        if full_text and len(full_text) > 100:
-            snippet = full_text
-            
-        brief = structured_data["the_brief"]
-        if snippet.startswith(brief):
-            remaining_text = snippet[len(brief):].strip()
-        else:
-            remaining_text = snippet
-            
-        if not remaining_text:
-            remaining_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
-            
-        core_text = " ".join(remaining_text.split())
-        if len(core_text) > 600:
-            core_text = core_text[:597] + "..."
-        structured_data["core_breakdown"] = core_text
-    else:
-        # Strip quotes and normalize whitespace
-        core_text = " ".join(str(structured_data["core_breakdown"]).strip().strip('\'"').split())
-        if len(core_text) > 600:
-            core_text = core_text[:597] + "..."
-        structured_data["core_breakdown"] = core_text
+    # Core Breakdown fallback
+    if full_text and len(full_text) > 100:
+        snippet = full_text
+        
+    brief = structured_data["the_brief"]
+    remaining_text = snippet[len(brief):].strip() if snippet.startswith(brief) else snippet
+    if not remaining_text:
+        remaining_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
+        
+    fallback_assign(structured_data, "core_breakdown", remaining_text, 600, remaining_text)
 
     # Compute remaining text for The Edge and Deep Dive
     if not full_text or len(full_text) < 100:
@@ -496,16 +496,8 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         leftover_text = full_text[len(brief) + len(core):].strip()
 
     # The Edge fallback
-    if is_empty_value(structured_data.get("the_edge")):
-        if leftover_text:
-            edge_text = " ".join(leftover_text.split())
-            if len(edge_text) > 350:
-                edge_text = edge_text[:347] + "..."
-            structured_data["the_edge"] = edge_text
-        else:
-            structured_data["the_edge"] = "A critical industry update to watch as developments unfold."
-    else:
-        structured_data["the_edge"] = str(structured_data["the_edge"]).strip().strip('\'"')
+    # The Edge fallback
+    fallback_assign(structured_data, "the_edge", leftover_text, 350, "A critical industry update to watch as developments unfold.")
 
     # Update leftover_text for Deep Dive
     edge_str = structured_data.get("the_edge", "").replace("...", "")
@@ -516,16 +508,8 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         deep_leftover = leftover_text[len(edge_str):].strip()
 
     # The Deep Dive fallback
-    if is_empty_value(structured_data.get("deep_dive")):
-        if deep_leftover:
-            deep_text = " ".join(deep_leftover.split())
-            if len(deep_text) > 800:
-                deep_text = deep_text[:797] + "..."
-            structured_data["deep_dive"] = deep_text
-        else:
-            structured_data["deep_dive"] = "Continue tracking this story for deeper implications."
-    else:
-        structured_data["deep_dive"] = str(structured_data["deep_dive"]).strip().strip('\'"')
+    # The Deep Dive fallback
+    fallback_assign(structured_data, "deep_dive", deep_leftover, 800, "Continue tracking this story for deeper implications.")
         
     structured_data['url'] = item['url']
     structured_data['original_title'] = item['title']

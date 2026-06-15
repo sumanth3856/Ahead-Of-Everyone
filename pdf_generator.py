@@ -18,9 +18,9 @@ CAT_CLEAN_RE = re.compile(r'^[\d\s\.]+')
 
 import urllib.request
 
-MONTSERRAT_REG_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/static/Montserrat-Regular.ttf"
-MONTSERRAT_BOLD_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/static/Montserrat-Bold.ttf"
-MONTSERRAT_ITALIC_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/static/Montserrat-Italic.ttf"
+MONTSERRAT_REG_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Regular.ttf"
+MONTSERRAT_BOLD_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Bold.ttf"
+MONTSERRAT_ITALIC_URL = "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Italic.ttf"
 
 def ensure_font_exists(filename: str, url: str) -> bool:
     font_path = f"assets/{filename}"
@@ -158,6 +158,23 @@ class CustomPDF(FPDF):
         page_num = str(self.page_no()).zfill(2)
         self.cell(0, 10, page_num, ln=0, align="R")
 
+def draw_text(pdf, text, font="Montserrat", style="", size=10, color=BLACK, x=None, y=None, align="L", w=0, h=6, bg=None, multi=False):
+    if x is not None: pdf.set_x(x)
+    if y is not None: pdf.set_y(y)
+    pdf.set_font(font, style, size)
+    pdf.set_text_color(*color)
+    if bg:
+        pdf.set_fill_color(*bg)
+        if multi:
+            pdf.multi_cell(w, h, text, align=align, fill=True)
+        else:
+            pdf.cell(w, h, text, align=align, ln=1, fill=True)
+    else:
+        if multi:
+            pdf.multi_cell(w, h, text, align=align)
+        else:
+            pdf.cell(w, h, text, align=align, ln=1)
+
 def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.add_page()
     pdf.set_fill_color(*BLACK)
@@ -196,21 +213,12 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
         pdf.cell(20, 20, "AoE", align="C")
         
     # Title - Centered, massive
-    pdf.set_y(50)
-    pdf.set_font("Montserrat", "B", 52)
-    pdf.set_text_color(*WHITE)
-    pdf.cell(0, 18, "AHEAD OF", align="C", ln=1)
-    pdf.cell(0, 18, "EVERYONE", align="C", ln=1)
+    draw_text(pdf, "AHEAD OF", style="B", size=52, color=WHITE, y=50, align="C", h=18)
+    draw_text(pdf, "EVERYONE", style="B", size=52, color=WHITE, align="C", h=18)
     
     # Tagline - Centered
-    pdf.set_y(90)
-    pdf.set_font("Montserrat", "", 12)
-    pdf.set_text_color(*WHITE)
-    if custom_topic:
-        tagline = f"CURATED INTELLIGENCE BRIEFING: {custom_topic.upper()}"
-    else:
-        tagline = "CURATING TOMORROW'S INNOVATIONS, TODAY."
-    pdf.cell(0, 8, tagline, align="C", ln=1)
+    tagline = f"CURATED INTELLIGENCE BRIEFING: {custom_topic.upper()}" if custom_topic else "CURATING TOMORROW\'S INNOVATIONS, TODAY."
+    draw_text(pdf, tagline, size=12, color=WHITE, y=90, align="C", h=8)
     
     # Vertical Stripe (Anchor for Feature Block)
     # x=12, w=5, starting from y=130 down to the bottom margin
@@ -228,17 +236,9 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_text_color(*WHITE)
     pdf.cell(w, 8, apex_text, align="C", ln=1, fill=True)
     
-    pdf.set_y(pdf.get_y() + 2)
-    pdf.set_x(24)
-    pdf.set_font("Montserrat", "B", 24)
-    pdf.set_text_color(*WHITE)
-    pdf.multi_cell(160, 10, top_story.get("headline", "Featured News"), align="L")
+    draw_text(pdf, top_story.get("headline", "Featured News"), style="B", size=24, color=WHITE, x=24, y=pdf.get_y() + 2, w=160, h=10, multi=True)
     
-    pdf.set_y(pdf.get_y() + 8)
-    pdf.set_x(24)
-    pdf.set_font("Montserrat", "", 13) # Increased font weight simulation
-    pdf.set_text_color(*WHITE)
-    pdf.multi_cell(160, 7, top_story.get("the_brief", ""), align="L")
+    draw_text(pdf, top_story.get("the_brief", ""), size=13, color=WHITE, x=24, y=pdf.get_y() + 8, w=160, h=7, multi=True)
 
 def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
     pdf.suppress_header = True
