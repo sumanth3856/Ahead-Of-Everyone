@@ -16,6 +16,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotComm
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.error import Forbidden, BadRequest, Conflict, NetworkError, TimedOut, RetryAfter
 
+_background_tasks = set()
+def safe_create_task(coro):
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
 def safe_handler(func):
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
@@ -307,7 +314,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     progress_state["done_phases"].add(mark_done)
                     
             loading_msg = await edit_or_reply(text="⏳ Preparing global broadcast. Please standby...")
-            ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
+            ticker_task = safe_create_task(update_loading_message(loading_msg, context, progress_state))
             try:
                 await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
             except Exception as e:
@@ -390,7 +397,7 @@ async def enqueue_generation(chat_id: int, query: Optional[str], message, app: A
     app.bot_data.setdefault("active_user_generations", {})[chat_id] = False
     
     await app.bot_data["request_queue"].put(job)
-    asyncio.create_task(update_queue_status(message, app.bot, chat_id, app.bot_data["queue_list"]))
+    safe_create_task(update_queue_status(message, app.bot, chat_id, app.bot_data["queue_list"]))
 
 async def queue_worker(app: Application):
     """Background task that processes the queue sequentially (1 at a time)."""
@@ -430,7 +437,7 @@ async def queue_worker(app: Application):
             if mark_done:
                 progress_state["done_phases"].add(mark_done)
                 
-        ticker_task = asyncio.create_task(update_loading_message(message, app.bot, progress_state, topic=query))
+        ticker_task = safe_create_task(update_loading_message(message, app.bot, progress_state, topic=query))
         
         pdf_filename = None
         cached_file_id = None
@@ -589,7 +596,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
             progress_state["done_phases"].add(mark_done)
             
     loading_msg = await update.message.reply_text("⏳ *PREPARING* | Getting today's newsletter ready for everyone...", parse_mode="Markdown")
-    ticker_task = asyncio.create_task(update_loading_message(loading_msg, context, progress_state))
+    ticker_task = safe_create_task(update_loading_message(loading_msg, context, progress_state))
     try:
         await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
     except Exception as e:
@@ -864,7 +871,7 @@ async def post_init(app: Application) -> None:
     
     app.bot_data['request_queue'] = asyncio.Queue()
     app.bot_data['queue_list'] = []
-    app.bot_data['queue_worker_task'] = asyncio.create_task(queue_worker(app))
+    app.bot_data['queue_worker_task'] = safe_create_task(queue_worker(app))
     
     # Register global/default commands for all users
     try:

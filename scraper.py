@@ -305,14 +305,14 @@ async def fetch_full_article_text(url: str) -> str:
             resp.raise_for_status()
             text_content = await resp.text()
             
-        soup = BeautifulSoup(text_content, 'html.parser')
-        
-        # Remove script and style elements
-        for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            script.extract()
+        def parse_html(html):
+            soup = BeautifulSoup(html, 'html.parser')
+            for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                script.extract()
+            paragraphs = soup.find_all('p')
+            return " ".join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
             
-        paragraphs = soup.find_all('p')
-        text = " ".join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
+        text = await asyncio.to_thread(parse_html, text_content)
         return text
     except Exception as e:
         logger.warning(f"Deep scrape failed for {url}: {e}")

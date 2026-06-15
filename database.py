@@ -63,11 +63,13 @@ async def get_pool():
                     user=user,
                     password=password,
                     database=database_name,
-                    ssl=ssl_mode if ssl_mode != 'disable' else None
+                    ssl=ssl_mode if ssl_mode != 'disable' else None,
+                    min_size=1,
+                    max_size=5
                 )
             except Exception as e:
                 logger.error(f"Failed to connect with parsed params: {e}. Falling back to raw DSN.")
-                _pool = await asyncpg.create_pool(DATABASE_URL)
+                _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
     return _pool
 
 async def init_db():
