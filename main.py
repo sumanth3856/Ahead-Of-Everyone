@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Initialize config/logging
 import config
-from scraper import fetch_dynamic_news, register_sent_stories, fetch_targeted_news
+from scraper import fetch_dynamic_news, register_sent_stories, fetch_targeted_news, generate_editorial_synthesis
 from pdf_generator import generate_digest_pdf
 from telegram_client import send_pdf_to_telegram
 
@@ -19,9 +19,17 @@ async def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
         if progress_callback:
             progress_callback("Finding Stories", 5, "Connecting to news feeds to fetch daily articles...")
         stories = await fetch_dynamic_news(limit, progress_callback)
-        pdf_filename = await asyncio.to_thread(generate_digest_pdf, stories, None, progress_callback)
+        if not stories:
+            logger.error("No stories scraped.")
+            return None
+            
+        if progress_callback:
+            progress_callback("Writing Summaries", 66, "Generating editorial synthesis for THE RADAR...")
+        synthesis = await generate_editorial_synthesis(stories)
+        
+        pdf_filename = await asyncio.to_thread(generate_digest_pdf, stories, None, progress_callback, synthesis)
         if not pdf_filename:
-            logger.error("No stories scraped or generated.")
+            logger.error("Failed to generate PDF.")
             return None
         try:
             await asyncio.to_thread(register_sent_stories, stories)
@@ -75,9 +83,17 @@ async def generate_targeted_digest(query: str, limit=5, progress_callback=None) 
         if progress_callback:
             progress_callback("Finding Stories", 5, f"Scraping news feeds for '{query}'...")
         stories = await fetch_targeted_news(query, limit, progress_callback)
-        pdf_filename = await asyncio.to_thread(generate_digest_pdf, stories, query, progress_callback)
+        if not stories:
+            logger.error("No stories scraped.")
+            return None
+            
+        if progress_callback:
+            progress_callback("Writing Summaries", 66, "Generating editorial synthesis for THE RADAR...")
+        synthesis = await generate_editorial_synthesis(stories)
+        
+        pdf_filename = await asyncio.to_thread(generate_digest_pdf, stories, query, progress_callback, synthesis)
         if not pdf_filename:
-            logger.error("No stories scraped or generated.")
+            logger.error("Failed to generate PDF.")
             return None
             
         cache[norm_query] = {

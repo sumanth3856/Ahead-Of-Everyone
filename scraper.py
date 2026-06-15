@@ -205,10 +205,16 @@ You MUST output ONLY valid JSON matching this exact schema, with no markdown for
   "headline": "Cleaned, punchy version of the article title",
   "headline_highlight": "One single powerful word representing the headline",
   "the_brief": "A 1-2 sentence executive summary of what happened.",
-  "core_breakdown": "A deep, journalistic summary of the key facts, capturing the full picture of the news (~600-1000 chars). DO NOT include markdown images or raw links.",
+  "core_breakdown": [
+    {
+      "tag": "String: Short, 1-3 word bold lead-in descriptor (e.g., 'The deal', 'The architecture', 'The pricing')",
+      "detail": "String: The punchy factual details and metrics for this point (~150-250 characters)"
+    }
+  ],
   "the_edge": "The critical take, market impact, or 'why this matters' (~350 chars).",
   "deep_dive": "An insightful quote from the article or final piece of critical context (~300 chars)."
-}"""
+}
+Note: The 'core_breakdown' list MUST contain exactly 4 key objects covering the core facts of the story."""
 
     # Build user message with social context if available
     user_msg = f"Title: {title}\nRaw Context: {raw_content}"
@@ -507,24 +513,56 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
     else:
         structured_data["the_brief"] = str(structured_data["the_brief"]).strip().strip('\'"')
 
-    # Core Breakdown fallback
-    # Core Breakdown fallback
-    if full_text and len(full_text) > 100:
-        snippet = full_text
-        
-    brief = structured_data["the_brief"]
-    remaining_text = snippet[len(brief):].strip() if snippet.startswith(brief) else snippet
-    if not remaining_text:
-        remaining_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
-        
-    fallback_assign(structured_data, "core_breakdown", remaining_text, 600, remaining_text)
+    # Core Breakdown fallback (Must be a list of exactly 4 objects with tag and detail keys)
+    raw_core = structured_data.get("core_breakdown")
+    is_valid_list = isinstance(raw_core, list) and len(raw_core) > 0 and all(isinstance(x, dict) and "tag" in x and "detail" in x for x in raw_core)
+    
+    if not is_valid_list:
+        if isinstance(raw_core, str) and raw_core.strip():
+            fallback_text = raw_core
+        else:
+            if full_text and len(full_text) > 100:
+                snippet = full_text
+            brief = structured_data["the_brief"]
+            remaining_text = snippet[len(brief):].strip() if snippet.startswith(brief) else snippet
+            if not remaining_text:
+                remaining_text = "Rapidly developing story. Full intelligence synthesis is currently compiling. Please review the source link for raw, unfiltered developments."
+            fallback_text = remaining_text
+            
+        # Split fallback_text into sentences
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', fallback_text) if s.strip()]
+        while len(sentences) < 4:
+            sentences.append("Additional context and verification is being compiled by our intelligence desk.")
+        if len(sentences) > 4:
+            sentences[3] = " ".join(sentences[3:])
+            sentences = sentences[:4]
+            
+        tags = ["The update", "The details", "The impact", "The outlook"]
+        structured_data["core_breakdown"] = [
+            {"tag": tags[i], "detail": sentences[i][:250]} for i in range(4)
+        ]
+    else:
+        cleaned_list = []
+        for i in range(4):
+            if i < len(raw_core):
+                c_item = raw_core[i]
+                tag = str(c_item.get("tag", "The detail")).strip().strip('\'"')
+                detail = str(c_item.get("detail", "Additional context under review.")).strip().strip('\'"')
+                cleaned_list.append({"tag": tag, "detail": detail})
+            else:
+                cleaned_list.append({
+                    "tag": "The outlook",
+                    "detail": "Additional validation and research continues as the story develops."
+                })
+        structured_data["core_breakdown"] = cleaned_list
 
     # Compute remaining text for The Edge and Deep Dive
     if not full_text or len(full_text) < 100:
         full_text = item['raw_text']
         
     brief = structured_data.get("the_brief", "")
-    core = structured_data.get("core_breakdown", "").replace("...", "")
+    core_texts = [x.get("detail", "") for x in structured_data.get("core_breakdown", [])]
+    core = " ".join(core_texts).replace("...", "")
     
     # Try to find where core ends
     idx = full_text.find(core)
@@ -905,3 +943,72 @@ async def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None
         progress_callback("Writing Summaries", 65, "AI Summarization completed successfully.", mark_done="Writing Summaries")
         
     return stories
+
+async def generate_editorial_synthesis(stories: List[Dict]) -> Dict:
+    """Generates an editorial synthesis of all the scraped stories for the RADAR page."""
+    if not stories:
+        return {
+            "meta_theme": "The cost of intelligence is collapsing, the locus of control is shifting, and the moat is moving from models to compute, sovereignty, and energy.",
+            "takeaway": "Stop building on a single model. Build the workflow that lets you swap any model in. The cost wall is collapsing. Your moat is the system around the model, not the model itself."
+        }
+
+    logger.info("[AI] Generating editorial synthesis for the selected stories...")
+    
+    # Format the headlines and briefs for the LLM
+    stories_text = ""
+    for idx, story in enumerate(stories):
+        headline = story.get("headline", "News Story")
+        brief = story.get("the_brief", "")
+        stories_text += f"Story {idx + 1}:\nHeadline: {headline}\nSummary: {brief}\n\n"
+
+    system_prompt = """You are an elite, Pulitzer-winning tech analyst. 
+You will be given a list of stories from the last 24 hours. Your job is to analyze them together and find the single, deep macro-trend or pattern that connects them.
+You must output ONLY valid JSON matching this exact schema, with no markdown formatting around it:
+{
+  "meta_theme": "A 2-sentence synthesis of the overarching shift/pattern connecting these stories. Tone must be authoritative, urgent, and punchy.",
+  "takeaway": "A 2-sentence actionable warning or advice: what the reader must do to stay ahead, starting with 'Stop building/relying...' or similar imperative verb."
+}"""
+
+    user_msg = f"Here is the list of stories to analyze:\n\n{stories_text}"
+    
+    primary_model = config.OPENROUTER_MODEL
+    backup_models = [
+        "openai/gpt-oss-120b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-4-31b-it:free",
+        "openrouter/free"
+    ]
+    
+    content = await _execute_llm_completion(primary_model, system_prompt, user_msg)
+    if not content:
+        for backup in backup_models:
+            logger.info(f"[AI] Synthesis fallback to model: {backup}")
+            content = await _execute_llm_completion(backup, system_prompt, user_msg)
+            if content:
+                break
+                
+    if content:
+        try:
+            cleaned_content = content.strip()
+            if cleaned_content.startswith("```"):
+                lines = cleaned_content.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                cleaned_content = "\n".join(lines).strip()
+            synthesis = json.loads(cleaned_content)
+            if "meta_theme" in synthesis and "takeaway" in synthesis:
+                logger.info("[AI] Editorial synthesis generated successfully.")
+                return {
+                    "meta_theme": str(synthesis["meta_theme"]).strip().strip('\'"'),
+                    "takeaway": str(synthesis["takeaway"]).strip().strip('\'"')
+                }
+        except Exception as e:
+            logger.warning(f"Failed to parse synthesis JSON: {e}. Raw content: {content}")
+            
+    return {
+        "meta_theme": "The cost of intelligence is collapsing, the locus of control is shifting, and the moat is moving from models to compute, sovereignty, and energy.",
+        "takeaway": "Stop building on a single model. Build the workflow that lets you swap any model in. The cost wall is collapsing. Your moat is the system around the model, not the model itself."
+    }
+

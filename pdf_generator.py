@@ -83,35 +83,50 @@ def sanitize_text(text: str) -> str:
 
 def ensure_gradient_image() -> str:
     """Generates the Option 1 brand purple gradient blur image if missing and returns its path."""
-    path = "assets/cover_gradient_v2.png"
+    path = "assets/cover_gradient_v4.png"
     if os.path.exists(path) and os.path.getsize(path) > 0:
         return path
     try:
         if not os.path.exists("assets"):
             os.makedirs("assets")
-        width, height = 600, 800
-        img = Image.new("RGBA", (width, height), (0, 0, 0, 255))
+        # Use exact A4 proportions (210 x 297 * 4) to prevent any stretching artifacts
+        width, height = 840, 1188
+        img = Image.new("RGB", (width, height), (0, 0, 0))
         pixels = img.load()
-        cx, cy = width / 2, height / 2
-        rx, ry = width / 2, height / 2
+        cx, cy = width / 2, height * 0.45 
+        
         center_color = (113, 27, 209)  # Brand Accent Deep Purple
         outer_color = (0, 0, 0)
+        
+        # Explicit radii in pixels (4 pixels = 1 mm in PDF)
+        radius_x = 336          # 84 mm (Leaves 21 mm black margin on sides)
+        radius_y_top = 356      # 89 mm (Leaves 44.5 mm black margin on top)
+        radius_y_bottom = 472   # 118 mm (Leaves 45.5 mm black margin on bottom)
+        
         for y in range(height):
             for x in range(width):
-                dx = (x - cx) / rx
-                dy = (y - cy) / ry
-                dist = math.sqrt(dx*dx + dy*dy)
-                if dist > 0.70:
-                    t = 1.0
+                dx = x - cx
+                dy = y - cy
+                
+                nx = dx / radius_x
+                if dy < 0:
+                    ny = dy / radius_y_top
                 else:
-                    t = dist / 0.70
-                    t = 3 * (t**2) - 2 * (t**3)  # Smoothstep transition
-                r = int(center_color[0] * (1 - t) + outer_color[0] * t)
-                g = int(center_color[1] * (1 - t) + outer_color[1] * t)
-                b = int(center_color[2] * (1 - t) + outer_color[2] * t)
-                pixels[x, y] = (r, g, b, 255)
-        # Apply Gaussian blur
-        img = img.filter(ImageFilter.GaussianBlur(radius=40))
+                    ny = dy / radius_y_bottom
+                    
+                t = math.sqrt(nx**2 + ny**2)
+                
+                if t >= 1.0:
+                    r, g, b = outer_color
+                else:
+                    t = math.pow(t, 1.8)  # Smooth decay curve
+                    if t > 1.0: t = 1.0
+                    r = int(center_color[0] * (1 - t) + outer_color[0] * t)
+                    g = int(center_color[1] * (1 - t) + outer_color[1] * t)
+                    b = int(center_color[2] * (1 - t) + outer_color[2] * t)
+                
+                pixels[x, y] = (r, g, b)
+                
         img.save(path)
         return path
     except Exception as e:
@@ -292,6 +307,43 @@ def draw_text(pdf, text, font="Montserrat", style="", size=10, color=BLACK, x=No
         else:
             pdf.cell(w, h, text, align=align, ln=1)
 
+def draw_headline_with_highlight(pdf, headline, highlight_word, font_size, line_height=10, default_color=WHITE, highlight_bg=BRAND_ACCENT, highlight_fg=WHITE):
+    pdf.set_font("Montserrat", "B", font_size)
+    words = headline.split(" ")
+    
+    # Clean highlight word for matching
+    clean_hl = highlight_word.lower().strip(".,;:!?\"'") if highlight_word else ""
+    
+    for i, word in enumerate(words):
+        # Clean current word for comparison
+        clean_word = word.lower().strip(".,;:!?\"'")
+        is_highlight = False
+        if clean_hl and clean_hl in clean_word:
+            is_highlight = True
+            
+        space = " " if i < len(words) - 1 else ""
+        word_to_draw = word + space
+        w = pdf.get_string_width(word_to_draw)
+        
+        # Check if word fits on current line
+        right_boundary = 210 - pdf.r_margin
+        if pdf.x + w > right_boundary:
+            pdf.ln(line_height)
+            pdf.set_x(pdf.l_margin)
+            
+        if is_highlight:
+            # Draw highlight rectangle
+            box_h = font_size * 0.35 + 2
+            box_y = pdf.y + (line_height - box_h) / 2
+            pdf.set_fill_color(*highlight_bg)
+            pdf.rect(pdf.x - 1, box_y, w + 1, box_h, 'F')
+            
+            pdf.set_text_color(*highlight_fg)
+            pdf.write(line_height, word_to_draw)
+        else:
+            pdf.set_text_color(*default_color)
+            pdf.write(line_height, word_to_draw)
+
 def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.add_page()
     pdf.set_fill_color(*BLACK)
@@ -358,11 +410,32 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_text_color(*WHITE)
     pdf.cell(w, 8, apex_text, align="C", ln=1, fill=True)
     
-    draw_text(pdf, top_story.get("headline", "Featured News"), style="B", size=24, color=WHITE, x=30, y=pdf.get_y() + 2, w=165, h=10, multi=True)
+    # Set margins for the column
+    old_l_margin = pdf.l_margin
+    old_r_margin = pdf.r_margin
+    pdf.set_left_margin(30)
+    pdf.set_right_margin(15)
+    pdf.set_xy(30, pdf.get_y() + 2)
     
-    draw_text(pdf, top_story.get("the_brief", ""), size=13, color=WHITE, x=30, y=pdf.get_y() + 8, w=165, h=7, multi=True)
+    draw_headline_with_highlight(
+        pdf=pdf, 
+        headline=top_story.get("headline", "Featured News"), 
+        highlight_word=top_story.get("headline_highlight", ""), 
+        font_size=24, 
+        line_height=10, 
+        default_color=WHITE, 
+        highlight_bg=BRAND_ACCENT, 
+        highlight_fg=WHITE
+    )
+    pdf.ln(10)
+    
+    # Restore margins
+    pdf.set_left_margin(old_l_margin)
+    pdf.set_right_margin(old_r_margin)
+    
+    draw_text(pdf, top_story.get("the_brief", ""), size=13, color=WHITE, x=30, y=pdf.get_y() + 2, w=165, h=7, multi=True)
 
-def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
+def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None, synthesis: dict = None):
     pdf.suppress_header = True
     pdf.add_page()
     pdf.set_fill_color(*WHITE)
@@ -378,52 +451,81 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
     else:
         pdf.cell(0, 15, "THE RADAR", ln=1)
         
-    pdf.set_y(45)
+    pdf.set_y(43)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*BRAND_ACCENT)
-    text = "READ IN THIS ORDER TO DOMINATE THE CONVERSATION."
-    pdf.cell(0, 6, text, align="L", ln=1)
+    pdf.cell(0, 6, "ONE PATTERN. TOLD FIVE DIFFERENT WAYS.", align="L", ln=1)
     
-    # Elegant list layout - dynamically condensed to guarantee single page
-    y_ptr = 60
+    pdf.set_y(50)
+    pdf.set_font("Montserrat", "", 11)
+    pdf.set_text_color(*BLACK)
+    intro_text = "The last 24 hours were not a list of unrelated stories. Read in sequence, they are one shift, told in five voices."
+    pdf.multi_cell(186, 6, intro_text, align="L")
+    
+    pdf.ln(3)
+    sy = pdf.get_y()
+    pdf.set_fill_color(245, 245, 245)
+    
+    if not synthesis:
+        synthesis = {
+            "meta_theme": "The cost of intelligence is collapsing, the locus of control is shifting, and the moat is moving from models to compute, sovereignty, and energy.",
+            "takeaway": "Stop building on a single model. Build the workflow that lets you swap any model in. The cost wall is collapsing. Your moat is the system around the model, not the model itself."
+        }
+    meta_theme = synthesis.get("meta_theme", "")
+    box_text = f"This is not five stories. This is the same story told five times. {meta_theme}"
+    
+    pdf.set_font("Montserrat", "B", 11)
+    lines = pdf.multi_cell(176, 5.5, box_text, split_only=True)
+    box_h = len(lines) * 5.5 + 8
+    
+    pdf.rect(12, sy, 186, box_h, 'F')
+    pdf.set_xy(17, sy + 4)
+    pdf.set_text_color(*BLACK)
+    pdf.multi_cell(176, 5.5, box_text, align="L")
+    
+    y_ptr = sy + box_h + 6
     
     for idx, story in enumerate(stories):
         pdf.set_xy(12, y_ptr)
-        
-        # Purple indicator stripe
         pdf.set_fill_color(*BRAND_ACCENT)
-        pdf.rect(12, y_ptr + 0.5, 1.5, 5, 'F')
+        pdf.rect(12, y_ptr + 1, 1.5, 4.5, 'F')
         
-        # Indicator
         pdf.set_xy(16, y_ptr)
-        pdf.set_font("Montserrat", "B", 12)
-        pdf.set_text_color(*BRAND_ACCENT)
-        cat_text = f"{str(idx + 1).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
-        pdf.cell(0, 6, cat_text, align="L", ln=1)
-        
-        # Headline
-        pdf.set_xy(12, y_ptr + 8)
-        pdf.set_font("Montserrat", "B", 14)
+        pdf.set_font("Montserrat", "B", 11)
         pdf.set_text_color(*BLACK)
         headline = story.get("headline", "")
-        if len(headline) > 90: headline = headline[:87] + "..."
-        pdf.multi_cell(186, 6, headline, align="L")
+        pdf.cell(0, 6, f"{str(idx + 1).zfill(2)}  {headline}", align="L", ln=1)
         
-        # Brief
-        pdf.set_xy(12, pdf.get_y() + 2)
-        pdf.set_font("Montserrat", "", 12) # Simulating weight with size
-        pdf.set_text_color(*BLACK)
-        brief = story.get("radar_brief", story.get("the_brief", ""))
-        brief = truncate_to_word_boundary(brief, 180)
-        pdf.multi_cell(186, 6, brief, align="L")
+        pdf.set_x(16)
+        pdf.set_font("Montserrat", "", 10)
+        pdf.set_text_color(100, 100, 100)
+        brief = story.get("the_brief", "")
+        brief = truncate_to_word_boundary(brief, 120)
+        pdf.cell(0, 5, brief, align="L", ln=1)
         
-        y_ptr = pdf.get_y() + 6
+        y_ptr = pdf.get_y() + 3
         
-        # Hairline separator
-        pdf.set_draw_color(*BLACK)
-        pdf.set_line_width(0.1)
-        pdf.line(12, y_ptr, 198, y_ptr)
-        y_ptr += 6
+    takeaway_text = synthesis.get("takeaway", "")
+    pdf.set_font("Montserrat", "B", 10.5)
+    t_lines = pdf.multi_cell(176, 5.5, takeaway_text, split_only=True)
+    takeaway_box_h = len(t_lines) * 5.5 + 15
+    
+    takeaway_y = 285 - takeaway_box_h
+    if takeaway_y < y_ptr + 4:
+        takeaway_y = y_ptr + 4
+        
+    pdf.set_fill_color(0, 0, 0)
+    pdf.rect(12, takeaway_y, 186, takeaway_box_h, 'F')
+    
+    pdf.set_xy(17, takeaway_y + 4)
+    pdf.set_font("Montserrat", "B", 8.5)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.cell(0, 5, "IF YOU TAKE ONE THING FROM THIS", ln=1)
+    
+    pdf.set_xy(17, takeaway_y + 10)
+    pdf.set_font("Montserrat", "B", 10.5)
+    pdf.set_text_color(*WHITE)
+    pdf.multi_cell(176, 5.5, takeaway_text, align="L")
 
 def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.suppress_header = True
@@ -451,168 +553,126 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_text_color(*BLACK)
     pdf.multi_cell(0, 11, story.get("headline", "News Story"), align="L")
     
-    pdf.set_y(pdf.get_y() + 10)
+    pdf.set_y(pdf.get_y() + 8)
     
-    # THE BRIEF
-    pdf.set_x(24)
-    pdf.set_font("Montserrat", "B", 10)
-    pdf.set_fill_color(*BRAND_ACCENT)
+    # THE BRIEF - Shaded Gray Box
+    brief_text = story.get("the_brief", "")
+    pdf.set_font("Montserrat", "", 10.5)
+    lines = pdf.multi_cell(176, 5.5, brief_text, split_only=True)
+    box_h = 4 + 6 + 2 + len(lines) * 5.5 + 4
+    
+    pdf.set_fill_color(245, 245, 245)
+    pdf.rect(12, pdf.get_y(), 186, box_h, 'F')
+    
+    pdf.set_xy(16, pdf.get_y() + 4)
+    pdf.set_fill_color(0, 0, 0)
     pdf.set_text_color(*WHITE)
-    text = "THE BRIEF"
-    w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 7, text, align="C", ln=1, fill=True)
+    pdf.set_font("Montserrat", "B", 8)
+    pdf.cell(24, 5.5, "QUICK TAKE", align="C", ln=1, fill=True)
     
-    pdf.set_y(pdf.get_y() + 2)
-    pdf.set_font("Montserrat", "", 11) # Reduced from 13 to fit 1-page
+    pdf.set_xy(16, pdf.get_y() + 2)
+    pdf.set_font("Montserrat", "", 10.5)
     pdf.set_text_color(*BLACK)
-    # Asymmetric indent for body text
-    pdf.set_x(24)
-    pdf.multi_cell(174, 6.5, story.get("the_brief", ""), align="J")
+    pdf.multi_cell(176, 5.5, brief_text, align="L")
     
-    pdf.set_y(pdf.get_y() + 10)
+    pdf.set_y(pdf.get_y() + box_h - (4 + 6 + 2 + len(lines) * 5.5) + 6)
     
-    # CORE BREAKDOWN
+    # WHAT YOU NEED TO KNOW header
     pdf.set_x(24)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
-    text = "CORE BREAKDOWN"
+    text = "WHAT YOU NEED TO KNOW"
     w = pdf.get_string_width(text) + 6
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     pdf.set_y(pdf.get_y() + 4)
     
-    core_text = story.get("core_breakdown", "")
-    pdf.set_x(24)
-    pdf.set_font("Montserrat", "", 11)
-    pdf.set_text_color(*BLACK)
-    pdf.multi_cell(174, 6.5, core_text, align="J")
+    # Render structured bullets
+    core_breakdown = story.get("core_breakdown", [])
+    if not isinstance(core_breakdown, list):
+        core_breakdown = [{"tag": "The detail", "detail": str(core_breakdown)}]
+        
+    for item in core_breakdown:
+        tag = item.get("tag", "").strip()
+        detail = item.get("detail", "").strip()
+        
+        old_l_margin = pdf.l_margin
+        pdf.set_left_margin(30)
+        
+        pdf.set_xy(24, pdf.get_y())
+        pdf.set_font("Montserrat", "B", 11)
+        pdf.set_text_color(*BLACK)
+        pdf.cell(6, 6.5, "—", ln=0)
+        
+        pdf.set_x(30)
+        pdf.set_font("Montserrat", "B", 11)
+        pdf.write(6.5, f"{tag}: ")
+        
+        pdf.set_font("Montserrat", "", 11)
+        pdf.write(6.5, detail)
+        pdf.ln(8)
+        
+        pdf.set_left_margin(old_l_margin)
         
     if pdf.get_y() > 220:
         pdf.add_page()
         pdf.set_y(20)
         
-    pdf.set_y(pdf.get_y() + 8)
+    pdf.set_y(pdf.get_y() + 4)
     
-    # T H E   E D G E (Pull-Quote Style)
-    wy = pdf.get_y()
+    # THE EDGE (Solid Black Box)
+    edge_text = f"\"{story.get('the_edge', '')}\""
+    pdf.set_font("Montserrat", "B", 12)
+    lines = pdf.multi_cell(176, 6.5, edge_text, split_only=True)
+    box_h = len(lines) * 6.5 + 15
     
-    # Calculate the dynamic height of the block
-    pdf.set_font("Montserrat", "B", 12.5)
-    lines = pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="J", split_only=True)
-    num_lines = len(lines)
-    text_height = num_lines * 7
-    total_edge_height = 10 + text_height + 2 # 10mm top padding + text_height + 2mm bottom padding
+    if pdf.get_y() + box_h > 275:
+        pdf.add_page()
+        wy = pdf.get_y()
+    else:
+        wy = pdf.get_y()
+        
+    pdf.set_fill_color(0, 0, 0)
+    pdf.rect(12, wy, 186, box_h, 'F')
     
-    pdf.set_fill_color(*BRAND_ACCENT)
-    # Thick bold purple line on the left
-    pdf.rect(12, wy, 2, total_edge_height, 'F')
+    pdf.set_xy(17, wy + 4)
+    pdf.set_font("Montserrat", "B", 9)
+    pdf.set_text_color(*BRAND_ACCENT)
+    pdf.cell(0, 5, "THE EDGE", ln=1)
     
-    pdf.set_xy(18, wy + 2)
-    pdf.set_font("Montserrat", "B", 10)
-    pdf.set_fill_color(*BRAND_ACCENT)
+    pdf.set_xy(17, wy + 10)
+    pdf.set_font("Montserrat", "B", 12)
     pdf.set_text_color(*WHITE)
-    text = "THE EDGE"
-    w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 7, text, align="C", ln=1, fill=True)
+    pdf.multi_cell(176, 6.5, edge_text, align="L")
     
-    pdf.set_xy(18, wy + 10)
-    pdf.set_font("Montserrat", "B", 12.5)
-    pdf.set_text_color(*BLACK)
-    pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="J")
-    
-    pdf.set_y(wy + total_edge_height + 4)
+    pdf.set_y(wy + box_h + 4)
     
     # T H E   D E E P   D I V E
     wy = pdf.get_y()
     leftover_height = 275 - wy
     
-    # If there's barely any space left, skip it to prevent formatting errors
     if leftover_height < 10:
         return
         
     pdf.set_x(12)
     pdf.set_font("Montserrat", "I", 10)
     pdf.set_text_color(*BRAND_ACCENT)
-    pdf.set_fill_color(248, 248, 250) # Very subtle gray/purple tint
+    pdf.set_fill_color(248, 248, 250)
     
     raw_deep_dive = story.get('deep_dive', story.get('the_deep_dive', ''))
     deep_dive_text = f" DEEP DIVE: {raw_deep_dive}"
     
-    # Calculate how much text can fit
-    # Line height is 7mm. Width is 186mm. ~110 chars fit on one line at 10pt.
     max_lines = int(leftover_height / 7)
-    max_chars = max_lines * 105  # slightly conservative
+    max_chars = max_lines * 105
     
     if len(deep_dive_text) > max_chars:
         deep_dive_text = deep_dive_text[:max_chars - 3] + "..."
         
-    # Render text with a dynamic background box that wraps its height
     pdf.set_xy(12, wy)
     pdf.multi_cell(186, 7, deep_dive_text, align="J", fill=True)
 
-def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
-    pdf.suppress_header = True
-    pdf.suppress_footer = False
-    pdf.add_page()
-    pdf.set_fill_color(*WHITE)
-    pdf.rect(0, 0, 210, 297, 'F')
-    pdf.suppress_header = False
-    pdf.header()
-    
-    pdf.set_y(25)
-    pdf.set_font("Montserrat", "B", 36)
-    pdf.set_text_color(*BLACK)
-    pdf.cell(0, 15, f"{custom_topic.upper()} RADAR", ln=1)
-        
-    pdf.set_y(45)
-    pdf.set_font("Montserrat", "B", 10)
-    pdf.set_text_color(*BRAND_ACCENT)
-    text = "TACTICAL BRIEFING DASHBOARD"
-    pdf.cell(0, 6, text, align="L", ln=1)
-    
-    # 2x2 Grid Layout with pure typography
-    col_w = 90
-    start_y = 65
-    
-    for idx, story in enumerate(stories):
-        if idx >= 4:
-            break
-            
-        col = idx % 2
-        row = idx // 2
-        
-        x_pos = 12 if col == 0 else 110
-        y_ptr = start_y + (row * 80) # 80mm height per block
-        
-        # Purple Hairline Top Border
-        pdf.set_draw_color(*BRAND_ACCENT)
-        pdf.set_line_width(0.5)
-        pdf.line(x_pos, y_ptr, x_pos + col_w, y_ptr)
-        
-        # Purple indicator stripe
-        pdf.set_fill_color(*BRAND_ACCENT)
-        pdf.rect(x_pos, y_ptr + 4.5, 1.5, 4, 'F')
-        
-        # Content
-        pdf.set_xy(x_pos + 4, y_ptr + 4)
-        pdf.set_font("Montserrat", "B", 9)
-        pdf.set_text_color(*BRAND_ACCENT)
-        cat_text = f"{str(idx + 1).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
-        pdf.cell(col_w - 4, 5, cat_text, ln=1)
-        
-        pdf.set_xy(x_pos, y_ptr + 10)
-        pdf.set_font("Montserrat", "B", 12)
-        pdf.set_text_color(*BLACK)
-        headline = story.get("headline", "")
-        if len(headline) > 65: headline = headline[:62] + "..."
-        pdf.multi_cell(col_w, 5, headline, align="L")
-        
-        pdf.set_xy(x_pos, pdf.get_y() + 3)
-        pdf.set_font("Montserrat", "", 10)
-        pdf.set_text_color(*BLACK)
-        brief = story.get("the_brief", "")
-        brief = truncate_to_word_boundary(brief, 180)
-        pdf.multi_cell(col_w, 5, brief, align="L")
+def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str, synthesis: dict = None):
+    draw_toc_page(pdf, stories, custom_topic, synthesis)
 
 def draw_conclusion_page(pdf: CustomPDF):
     pdf.suppress_header = True
@@ -653,7 +713,7 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 6, date_str, align="R", ln=1)
 
-def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callback=None) -> str:
+def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callback=None, synthesis: dict = None) -> str:
     """Generates a premium Dark/Light Mode multi-page PDF."""
     date_str = datetime.now().strftime("%d %B %Y")
     
@@ -680,7 +740,7 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
         # 2. TOC Page (Grid Layout)
         if progress_callback:
             progress_callback("Creating PDF", 75, "Rendering table of contents (Grid Layout)...")
-        draw_custom_toc_page(pdf, stories, custom_topic)
+        draw_custom_toc_page(pdf, stories, custom_topic, synthesis)
         # 3. Individual Article Pages
         for idx, story in enumerate(stories):
             if progress_callback:
@@ -691,7 +751,7 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
         # 2. TOC Page (Cascading/List Layout)
         if progress_callback:
             progress_callback("Creating PDF", 75, "Rendering table of contents (List Layout)...")
-        draw_toc_page(pdf, stories, custom_topic)
+        draw_toc_page(pdf, stories, custom_topic, synthesis)
         # 3. Individual Article Pages
         for idx, story in enumerate(stories):
             if progress_callback:
