@@ -179,7 +179,22 @@ def try_parse_json(content: str) -> Optional[Dict]:
 
 async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
     """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout."""
-    system_prompt = """You are an elite journalist for 'Ahead of Everyone'. Output ONLY valid JSON."""
+    system_prompt = """You are an elite, Pulitzer-winning tech journalist for 'Ahead of Everyone'.
+Your job is to read raw, noisy article content and perform a DEEP SUMMARIZATION.
+You must distill the content down to 80% compression—meaning you preserve the full factual picture, critical details, nuance, and context, while removing the bloat. 
+DO NOT hallucinate. DO NOT copy-paste directly. Write entirely original, engaging journalistic prose.
+IGNORE website navigation menus, cookie banners, headers, and irrelevant noise.
+
+You MUST output ONLY valid JSON matching this exact schema, with no markdown formatting around it:
+{
+  "category": "String (e.g., '02 . FEATURE . AI & RESEARCH', '03 . ALERT . CYBERSECURITY', '01 . NEWS . TECH POLICY')",
+  "headline": "Cleaned, punchy version of the article title",
+  "headline_highlight": "One single powerful word representing the headline",
+  "the_brief": "A 1-2 sentence executive summary of what happened.",
+  "core_breakdown": "A deep, journalistic summary of the key facts, capturing the full picture of the news (~600-1000 chars). DO NOT include markdown images or raw links.",
+  "the_edge": "The critical take, market impact, or 'why this matters' (~350 chars).",
+  "deep_dive": "An insightful quote from the article or final piece of critical context (~300 chars)."
+}"""
 
     # Build user message with social context if available
     user_msg = f"Title: {title}\nRaw Context: {raw_content}"
@@ -204,7 +219,7 @@ async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = 
         response = await client.chat.completions.create(
             model=primary_model,
             messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
-            timeout=12,
+            timeout=60,
         )
         content = response.choices[0].message.content.strip()
         parsed = try_parse_json(content)
@@ -225,7 +240,7 @@ async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = 
             response = await client.chat.completions.create(
                 model=model_id,
                 messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
-                timeout=15,
+                timeout=60,
             )
             if hasattr(response, 'choices') and response.choices:
                 content = response.choices[0].message.content.strip()
@@ -343,9 +358,34 @@ async def fetch_full_article_text(url: str) -> str:
         return ""
 
 async def fetch_story_details(item: Dict) -> Optional[Dict]:
-    logger.info(f"AI Processing: {item['title']}")
+    logger.info(f"[SCRAPER] Starting AI Processing for: {item['title']}")
     metadata = item.get('metadata', None)
-    structured_data = await ai_summarize(item['title'], item['raw_text'], metadata=metadata)
+    
+    # 1. Fetch full text FIRST using Jina Reader
+    full_text_raw = await fetch_full_article_text(item['url'])
+    
+    # 2. Clean the markdown noise to save tokens & improve accuracy
+    import re
+    cleaned_text = full_text_raw
+    if cleaned_text:
+        # Remove markdown image links ![...](...)
+        cleaned_text = re.sub(r'!\[.*?\]\(.*?\)', '', cleaned_text)
+        # Remove markdown links but keep text: [text](url) -> text
+        cleaned_text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', cleaned_text)
+        # Collapse multiple spaces/newlines
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        # Truncate to a reasonable length (e.g. 15000 chars)
+        cleaned_text = cleaned_text[:15000]
+    
+    if not cleaned_text or len(cleaned_text) < 100:
+        logger.warning(f"[SCRAPER] Full text extraction failed or too short, falling back to RSS snippet for: {item['url']}")
+        cleaned_text = item['raw_text']
+        
+    logger.info(f"[SCRAPER] Cleaned text ready ({len(cleaned_text)} chars). Sending to AI model...")
+    
+    # 3. AI Summarization
+    structured_data = await ai_summarize(item['title'], cleaned_text, metadata=metadata)
+    full_text = cleaned_text  # Make available for fallback logic
     
     # Clean headline & highlight for fallbacks
     clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
@@ -416,20 +456,8 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
     else:
         structured_data["the_brief"] = str(structured_data["the_brief"]).strip().strip('\'"')
 
-    # Cache full article text to avoid redundant network I/O during fallbacks
-    _cached_full_text = None
-    _full_text_fetched = False
-    
-    async def get_full_text():
-        nonlocal _cached_full_text, _full_text_fetched
-        if not _full_text_fetched:
-            _cached_full_text = await fetch_full_article_text(item['url'])
-            _full_text_fetched = True
-        return _cached_full_text
-
     # Core Breakdown fallback
     if is_empty_value(structured_data.get("core_breakdown")):
-        full_text = await get_full_text()
         if full_text and len(full_text) > 100:
             snippet = full_text
             
@@ -454,7 +482,6 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         structured_data["core_breakdown"] = core_text
 
     # Compute remaining text for The Edge and Deep Dive
-    full_text = await get_full_text()
     if not full_text or len(full_text) < 100:
         full_text = item['raw_text']
         
@@ -489,16 +516,16 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         deep_leftover = leftover_text[len(edge_str):].strip()
 
     # The Deep Dive fallback
-    if is_empty_value(structured_data.get("the_deep_dive")):
+    if is_empty_value(structured_data.get("deep_dive")):
         if deep_leftover:
             deep_text = " ".join(deep_leftover.split())
             if len(deep_text) > 800:
                 deep_text = deep_text[:797] + "..."
-            structured_data["the_deep_dive"] = deep_text
+            structured_data["deep_dive"] = deep_text
         else:
-            structured_data["the_deep_dive"] = "Explore the full coverage via the attached source link."
+            structured_data["deep_dive"] = "Continue tracking this story for deeper implications."
     else:
-        structured_data["the_deep_dive"] = str(structured_data["the_deep_dive"]).strip().strip('\'"')
+        structured_data["deep_dive"] = str(structured_data["deep_dive"]).strip().strip('\'"')
         
     structured_data['url'] = item['url']
     structured_data['original_title'] = item['title']

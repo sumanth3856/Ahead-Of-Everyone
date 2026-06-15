@@ -119,7 +119,17 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
     chat_id = message.chat_id
     
     # Animated emojis that cycle on each update to show the bot is alive
-    ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️"]
+    ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️", "🤖", "📡", "💡"]
+    fun_facts = [
+        "Did you know? The first computer bug was an actual moth found in 1947. 🐛",
+        "Hang tight! Our 120-Billion parameter AI is reading the news faster than a caffeinated squirrel. 🐿️☕",
+        "Fun fact: 90% of the world's data was generated in the last two years alone! 📈",
+        "Just a moment... The AI is doing some heavy mental lifting. 🏋️‍♂️🤖",
+        "Did you know? The Apollo 11 computer had less memory than a modern smart bulb. 💡🚀",
+        "Almost there! Compiling a Pulitzer-level intelligence briefing just for you. 📰✨",
+        "Fun fact: The first domain ever registered was Symbolics.com in 1985. 🌐",
+        "Wait for it... Our digital journalists are putting on the finishing touches! 🧑‍💻✍️"
+    ]
     idx = 0
     
     while True:
@@ -137,29 +147,32 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
             done_phases = progress_state.get("done_phases", set())
             
             tick_emoji = ticker_emojis[idx % len(ticker_emojis)]
-            idx += 1
             
             # Phase statuses synchronized with actual pipeline progression
-            p1_stat = "✅ Done" if "Finding Stories" in done_phases else (f"{tick_emoji} Working..." if phase == "Finding Stories" else "⏳ Waiting")
-            p2_stat = "✅ Done" if "Writing Summaries" in done_phases else (f"{tick_emoji} Working..." if phase == "Writing Summaries" else "⏳ Waiting")
-            p3_stat = "✅ Done" if "Creating PDF" in done_phases else (f"{tick_emoji} Working..." if phase == "Creating PDF" else "⏳ Waiting")
-            p4_stat = "✅ Done" if "Delivering" in done_phases else (f"{tick_emoji} Working..." if phase == "Delivering" else "⏳ Waiting")
+            p1_stat = "✅ Sourced" if "Finding Stories" in done_phases else (f"{tick_emoji} Scouting..." if phase == "Finding Stories" else "⏳ Waiting")
+            p2_stat = "✅ Synthesized" if "Writing Summaries" in done_phases else (f"{tick_emoji} Deep Thinking..." if phase == "Writing Summaries" else "⏳ Waiting")
+            p3_stat = "✅ Crafted" if "Creating PDF" in done_phases else (f"{tick_emoji} Designing..." if phase == "Creating PDF" else "⏳ Waiting")
+            p4_stat = "✅ Dispatched" if "Delivering" in done_phases else (f"{tick_emoji} Preparing..." if phase == "Delivering" else "⏳ Waiting")
             
             filled_length = int(progress / 5)
             gauge = "█" * filled_length + "░" * (20 - filled_length)
             
+            fact = fun_facts[(idx // 4) % len(fun_facts)]
+            
             text = (
-                f"{tick_emoji} *{BRAND_NAME.upper()}* | Preparing Newsletter\n"
+                f"{tick_emoji} *{BRAND_NAME.upper()}* | Forging your intelligence briefing\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🌐 *Finding Stories:*     {p1_stat}\n"
-                f"✍️ *Writing Summaries:*   {p2_stat}\n"
-                f"🎨 *Creating PDF:*       {p3_stat}\n"
-                f"🚀 *Delivering:*         {p4_stat}\n"
+                f"📡 *Sourcing Data:*     {p1_stat}\n"
+                f"🧠 *AI Synthesis:*      {p2_stat}\n"
+                f"🎨 *Publishing PDF:*    {p3_stat}\n"
+                f"🚀 *Dispatching:*       {p4_stat}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"{detail}\n\n"
-                f"`[{gauge}]`  *{progress}%*\n\n"
-                f"⏳ Fetching custom news{topic_str}. Just a moment!"
+                f"_{fact}_\n\n"
+                f"💡 *Status:* {detail}\n"
+                f"`[{gauge}]`  *{progress}%*"
             )
+            
+            idx += 1
             
             try:
                 await message.edit_text(text=text, parse_mode="Markdown")
@@ -530,7 +543,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     if not query:
         back_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]])
-        await update.message.reply_text("Please specify a topic! Example: `/news space exploration`", reply_markup=back_keyboard, parse_mode="Markdown")
+        await update.message.reply_text("🤔 *Oops! You forgot the topic!*\nPlease tell me what you want to learn about! \nExample: `/news quantum computing` 🚀", reply_markup=back_keyboard, parse_mode="Markdown")
         return
         
     cached_file_id = await database.get_cached_file_id_semantic(query)
@@ -552,7 +565,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.warning(f"Failed to send cached targeted file_id, generating fresh: {e}")
             
     is_subscribed = await database.is_subscriber(chat_id)
-    loading_msg = await update.message.reply_text(f"⏳ *FETCHING NEWS* | Finding stories about *{query}*... Just a moment!", parse_mode="Markdown")
+    loading_msg = await update.message.reply_text(f"🚀 *IGNITING ENGINES* | Dispatching AI agents to hunt down the best stories about *{query}*... 🕵️‍♂️✨", parse_mode="Markdown")
     
     await enqueue_generation(chat_id, query, loading_msg, context.application, is_subscribed)
 
@@ -595,7 +608,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
         if mark_done:
             progress_state["done_phases"].add(mark_done)
             
-    loading_msg = await update.message.reply_text("⏳ *PREPARING* | Getting today's newsletter ready for everyone...", parse_mode="Markdown")
+    loading_msg = await update.message.reply_text("🚀 *IGNITING ENGINES* | Firing up the AI clusters to forge today's intelligence briefing! 🧠⚡", parse_mode="Markdown")
     ticker_task = safe_create_task(update_loading_message(loading_msg, context, progress_state))
     try:
         await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
@@ -626,7 +639,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("✅ *SENT* | Newsletter successfully delivered to all subscribers!", reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text("🎉 *BOOM! DELIVERED* | The intelligence briefing has successfully landed in everyone's inbox! 🚀📬", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Cancel the current running global broadcast or individual user generation."""
@@ -642,17 +655,17 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # 1. Admin trying to cancel global broadcast
     if is_admin and context.bot_data.get("broadcast_in_progress", False):
         context.bot_data["broadcast_cancelled"] = True
-        await update.message.reply_text("🛑 *CANCELLATION REQUESTED* | Halting the active broadcast pipeline. Standby...")
+        await update.message.reply_text("🛑 *EMERGENCY BRAKES PULLED* | Halting the active broadcast pipeline immediately... 🚄💥")
         return
         
     # 2. Check if this specific user has an active generation running
     active_gens = context.bot_data.get("active_user_generations", {})
     if chat_id in active_gens:
         active_gens[chat_id] = True
-        await update.message.reply_text("🛑 *CANCELLATION REQUESTED* | Halting your active pipeline. Standby...")
+        await update.message.reply_text("🛑 *EMERGENCY BRAKES PULLED* | Halting your active pipeline immediately... 🚄💥")
         return
         
-    await update.message.reply_text("ℹ️ No active generation is currently running for your session.")
+    await update.message.reply_text("ℹ️ *All quiet on the western front!* No active generation is currently running for you right now. ☕")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""
