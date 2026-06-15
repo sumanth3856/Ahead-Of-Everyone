@@ -84,7 +84,7 @@ def prune_registry(registry: List[Dict]) -> List[Dict]:
             logger.warning(f"Dropping corrupt registry item during prune: {e}")
     return pruned
 
-def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
+def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict], jaccard_threshold: float = 0.7) -> bool:
     if any(item.get('url') == url for item in registry):
         return True
     
@@ -106,7 +106,7 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict]) -> bool:
         union = words_new.union(words_old)
         if union:
             jaccard = len(intersection) / len(union)
-            if jaccard > 0.7:
+            if jaccard > jaccard_threshold:
                 update_keywords = ['update', 'updated', 'live', 'developing', 'latest', 'detailed', 'new details', 'clarification']
                 if any(kw in clean_title for kw in update_keywords):
                     logger.info(f"Allowing update/developing article: {title}")
@@ -196,7 +196,7 @@ IGNORE website navigation menus, cookie banners, headers, and irrelevant noise.
 
 You MUST output ONLY valid JSON matching this exact schema, with no markdown formatting around it:
 {
-  "category": "String (e.g., '02 . FEATURE . AI & RESEARCH', '03 . ALERT . CYBERSECURITY', '01 . NEWS . TECH POLICY')",
+  "category": "String (Generate a 2-4 word topic category, e.g., 'FEATURE . AI', 'ALERT . CYBERSECURITY', 'SPORT . CRICKET', 'NEWS . POLICY')",
   "headline": "Cleaned, punchy version of the article title",
   "headline_highlight": "One single powerful word representing the headline",
   "the_brief": "A 1-2 sentence executive summary of what happened.",
@@ -901,12 +901,12 @@ async def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None
     
     raw_items = await fetch_rss_feed(rss_feed, lookback_hours=72)
     
-    # Deduplicate by title
-    seen = set()
+    # Deduplicate by semantic overlap & against history
+    registry = await load_sent_registry()
     unique_items = []
     for item in raw_items:
-        if item['title'] not in seen:
-            seen.add(item['title'])
+        if not is_duplicate_or_rehash(item['title'], item['link'], registry + unique_items, jaccard_threshold=0.2):
+            item['token_set'] = set(WORD_TOKEN_RE.findall(item['title'].lower().strip()))
             unique_items.append(item)
             
     selected_items = unique_items[:limit]
