@@ -34,7 +34,7 @@ async def get_http_session() -> aiohttp.ClientSession:
     global _session
     async with _session_lock:
         if _session is None or _session.closed:
-            connector = aiohttp.TCPConnector(use_dns_cache=False, family=socket.AF_INET)
+            connector = aiohttp.TCPConnector(use_dns_cache=True, family=socket.AF_INET)
             _session = aiohttp.ClientSession(connector=connector)
         return _session
 

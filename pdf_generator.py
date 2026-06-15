@@ -3,8 +3,10 @@ import logging
 import shutil
 import re
 import time
+import math
 from fpdf import FPDF
 from datetime import datetime
+from PIL import Image, ImageFilter
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,13 @@ def ensure_logo_exists() -> bool:
 
 def sanitize_text(text: str) -> str:
     if not isinstance(text, str): return text
+    # Strip markdown emphasis characters (e.g. *, _, `, **)
+    text = re.sub(r'\*\*+(.*?)\*\*+', r'\1', text)
+    text = re.sub(r'\*+(.*?)\*+', r'\1', text)
+    text = re.sub(r'__+(.*?)__+', r'\1', text)
+    text = re.sub(r'_+(.*?)_+', r'\1', text)
+    text = re.sub(r'`+(.*?)`+', r'\1', text)
+    
     replacements = {
         '\u2011': '-', '\u2013': '-', '\u2014': '--',
         '\u2018': "'", '\u2019': "'", '\u201c': '"', '\u201d': '"',
@@ -72,9 +81,102 @@ def sanitize_text(text: str) -> str:
         text = text.encode('latin-1', errors='replace').decode('latin-1')
     return text
 
+def ensure_gradient_image() -> str:
+    """Generates the Option 1 brand purple gradient blur image if missing and returns its path."""
+    path = "assets/cover_gradient_v2.png"
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        return path
+    try:
+        if not os.path.exists("assets"):
+            os.makedirs("assets")
+        width, height = 600, 800
+        img = Image.new("RGBA", (width, height), (0, 0, 0, 255))
+        pixels = img.load()
+        cx, cy = width / 2, height / 2
+        rx, ry = width / 2, height / 2
+        center_color = (113, 27, 209)  # Brand Accent Deep Purple
+        outer_color = (0, 0, 0)
+        for y in range(height):
+            for x in range(width):
+                dx = (x - cx) / rx
+                dy = (y - cy) / ry
+                dist = math.sqrt(dx*dx + dy*dy)
+                if dist > 0.70:
+                    t = 1.0
+                else:
+                    t = dist / 0.70
+                    t = 3 * (t**2) - 2 * (t**3)  # Smoothstep transition
+                r = int(center_color[0] * (1 - t) + outer_color[0] * t)
+                g = int(center_color[1] * (1 - t) + outer_color[1] * t)
+                b = int(center_color[2] * (1 - t) + outer_color[2] * t)
+                pixels[x, y] = (r, g, b, 255)
+        # Apply Gaussian blur
+        img = img.filter(ImageFilter.GaussianBlur(radius=40))
+        img.save(path)
+        return path
+    except Exception as e:
+        logger.error(f"Failed to generate gradient blur image: {e}")
+        return ""
+
+def balance_quotes(text: str) -> str:
+    """Balances double and single quotes in a string, especially after truncation."""
+    # Count occurrences of double quotes
+    double_quotes = text.count('"') + text.count('“') + text.count('”')
+    if double_quotes % 2 != 0:
+        if text.endswith("..."):
+            text = text[:-3] + '"...'
+        else:
+            text = text + '"'
+            
+    # Count occurrences of single quotes
+    single_quotes = text.count("'") + text.count('‘') + text.count('’')
+    if single_quotes % 2 != 0:
+        if text.endswith("..."):
+            text = text[:-3] + "'..."
+        else:
+            text = text + "'"
+    return text
+
 def clean_category(raw_cat: str) -> str:
     """Removes leading numbers and dots from the AI category."""
     return CAT_CLEAN_RE.sub('', raw_cat).upper()
+
+def truncate_to_word_boundary(text: str, limit: int) -> str:
+    """Truncates text to a maximum of limit characters, ending on a word boundary and balancing quotes."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return balance_quotes(text)
+    slice_limit = limit - 3
+    sub_text = text[:slice_limit]
+    last_space = sub_text.rfind(' ')
+    if last_space != -1:
+        truncated = sub_text[:last_space].rstrip(".,;:!- ") + "..."
+    else:
+        truncated = sub_text + "..."
+    return balance_quotes(truncated)
+
+def sanitize_stories(stories: list) -> list:
+    """Recursively sanitizes all text fields in a list of story dictionaries for PDF safety."""
+    sanitized_stories = []
+    for story in stories:
+        sanitized = {}
+        for k, v in story.items():
+            if isinstance(v, str):
+                sanitized[k] = sanitize_text(v)
+            elif isinstance(v, list):
+                new_list = []
+                for item in v:
+                    if isinstance(item, dict):
+                        new_list.append({ik: sanitize_text(iv) if isinstance(iv, str) else iv for ik, iv in item.items()})
+                    elif isinstance(item, str):
+                        new_list.append(sanitize_text(item))
+                    else:
+                        new_list.append(item)
+                sanitized[k] = new_list
+            else:
+                sanitized[k] = v
+        sanitized_stories.append(sanitized)
+    return sanitized_stories
 
 class CustomPDF(FPDF):
     def __init__(self, date_str: str, custom_topic: str = None):
@@ -111,6 +213,21 @@ class CustomPDF(FPDF):
         except RuntimeError:
             self.use_fallback_fonts = True
             super().set_font("helvetica", style, size)
+
+    def multi_cell(self, w, h=None, txt="", *args, **kwargs):
+        # Extract text/txt safely to prevent TypeError when fpdf2 calls this recursively
+        text = kwargs.pop('text', txt)
+        
+        old_l_margin = self.l_margin
+        current_x = self.x
+        if current_x != old_l_margin:
+            self.set_left_margin(current_x)
+        
+        val = super().multi_cell(w, h, text, *args, **kwargs)
+        
+        if current_x != old_l_margin:
+            self.set_left_margin(old_l_margin)
+        return val
 
     def header(self):
         if self.page_no() == 1 or getattr(self, 'suppress_header', False):
@@ -159,8 +276,8 @@ class CustomPDF(FPDF):
         self.cell(0, 10, page_num, ln=0, align="R")
 
 def draw_text(pdf, text, font="Montserrat", style="", size=10, color=BLACK, x=None, y=None, align="L", w=0, h=6, bg=None, multi=False):
-    if x is not None: pdf.set_x(x)
     if y is not None: pdf.set_y(y)
+    if x is not None: pdf.set_x(x)
     pdf.set_font(font, style, size)
     pdf.set_text_color(*color)
     if bg:
@@ -179,6 +296,11 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.add_page()
     pdf.set_fill_color(*BLACK)
     pdf.rect(0, 0, 210, 297, 'F')
+    
+    # Draw centered background gradient blur image
+    grad_path = ensure_gradient_image()
+    if grad_path:
+        pdf.image(grad_path, x=0, y=0, w=210, h=297)
     
     # Highlighted Date at Top Right
     pdf.set_y(12)
@@ -228,7 +350,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     
     # Featured Content
     pdf.set_y(wy + 10)
-    pdf.set_x(24) # Leaves 12mm margin + 5mm stripe + 7mm gap = 24
+    pdf.set_x(30) # Leaves 12mm margin + 5mm stripe + 13mm gap = 30
     pdf.set_font("Montserrat", "B", 11)
     apex_text = " 01 . THE APEX "
     w = pdf.get_string_width(apex_text)
@@ -236,9 +358,9 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.set_text_color(*WHITE)
     pdf.cell(w, 8, apex_text, align="C", ln=1, fill=True)
     
-    draw_text(pdf, top_story.get("headline", "Featured News"), style="B", size=24, color=WHITE, x=24, y=pdf.get_y() + 2, w=160, h=10, multi=True)
+    draw_text(pdf, top_story.get("headline", "Featured News"), style="B", size=24, color=WHITE, x=30, y=pdf.get_y() + 2, w=165, h=10, multi=True)
     
-    draw_text(pdf, top_story.get("the_brief", ""), size=13, color=WHITE, x=24, y=pdf.get_y() + 8, w=160, h=7, multi=True)
+    draw_text(pdf, top_story.get("the_brief", ""), size=13, color=WHITE, x=30, y=pdf.get_y() + 8, w=165, h=7, multi=True)
 
 def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
     pdf.suppress_header = True
@@ -292,8 +414,7 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None):
         pdf.set_font("Montserrat", "", 12) # Simulating weight with size
         pdf.set_text_color(*BLACK)
         brief = story.get("radar_brief", story.get("the_brief", ""))
-        # Hard truncate to ensure it fits (max ~130 chars for TOC)
-        if len(brief) > 130: brief = brief[:127] + "..."
+        brief = truncate_to_word_boundary(brief, 180)
         pdf.multi_cell(186, 6, brief, align="L")
         
         y_ptr = pdf.get_y() + 6
@@ -318,7 +439,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     # Category Indicator
     pdf.set_y(20)
-    pdf.set_x(16)
+    pdf.set_x(24)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*BRAND_ACCENT)
     cat_text = f"{str(index).zfill(2)} . {clean_category(story.get('category', 'NEWS'))}"
@@ -333,6 +454,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_y(pdf.get_y() + 10)
     
     # THE BRIEF
+    pdf.set_x(24)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
@@ -350,7 +472,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_y(pdf.get_y() + 10)
     
     # CORE BREAKDOWN
-    pdf.set_x(12)
+    pdf.set_x(24)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_fill_color(*BRAND_ACCENT)
     pdf.set_text_color(*WHITE)
@@ -373,9 +495,17 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     
     # T H E   E D G E (Pull-Quote Style)
     wy = pdf.get_y()
+    
+    # Calculate the dynamic height of the block
+    pdf.set_font("Montserrat", "B", 12.5)
+    lines = pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="J", split_only=True)
+    num_lines = len(lines)
+    text_height = num_lines * 7
+    total_edge_height = 10 + text_height + 2 # 10mm top padding + text_height + 2mm bottom padding
+    
     pdf.set_fill_color(*BRAND_ACCENT)
     # Thick bold purple line on the left
-    pdf.rect(12, wy, 2, 25, 'F')
+    pdf.rect(12, wy, 2, total_edge_height, 'F')
     
     pdf.set_xy(18, wy + 2)
     pdf.set_font("Montserrat", "B", 10)
@@ -386,11 +516,11 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.cell(w, 7, text, align="C", ln=1, fill=True)
     
     pdf.set_xy(18, wy + 10)
-    pdf.set_font("Montserrat", "B", 14)
+    pdf.set_font("Montserrat", "B", 12.5)
     pdf.set_text_color(*BLACK)
     pdf.multi_cell(180, 7, f"\"{story.get('the_edge', '')}\"", align="J")
     
-    pdf.set_y(pdf.get_y() + 6)
+    pdf.set_y(wy + total_edge_height + 4)
     
     # T H E   D E E P   D I V E
     wy = pdf.get_y()
@@ -405,7 +535,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_text_color(*BRAND_ACCENT)
     pdf.set_fill_color(248, 248, 250) # Very subtle gray/purple tint
     
-    raw_deep_dive = story.get('the_deep_dive', '')
+    raw_deep_dive = story.get('deep_dive', story.get('the_deep_dive', ''))
     deep_dive_text = f" DEEP DIVE: {raw_deep_dive}"
     
     # Calculate how much text can fit
@@ -481,7 +611,7 @@ def draw_custom_toc_page(pdf: CustomPDF, stories: list, custom_topic: str):
         pdf.set_font("Montserrat", "", 10)
         pdf.set_text_color(*BLACK)
         brief = story.get("the_brief", "")
-        if len(brief) > 130: brief = brief[:127] + "..."
+        brief = truncate_to_word_boundary(brief, 180)
         pdf.multi_cell(col_w, 5, brief, align="L")
 
 def draw_conclusion_page(pdf: CustomPDF):
@@ -490,6 +620,11 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.suppress_footer = True
     pdf.set_fill_color(*BLACK)
     pdf.rect(0, 0, 210, 297, 'F')
+    
+    # Draw centered background gradient blur image
+    grad_path = ensure_gradient_image()
+    if grad_path:
+        pdf.image(grad_path, x=0, y=0, w=210, h=297)
     
     pdf.set_y(120)
     pdf.set_font("Montserrat", "B", 42)
@@ -512,8 +647,8 @@ def draw_conclusion_page(pdf: CustomPDF):
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 6, "AHEAD OF EVERYONE", align="L", ln=0)
     
-    # Right corner: Date (DD/MM/YYYY)
-    date_str = datetime.now().strftime("%d/%m/%Y")
+    # Right corner: Date (e.g. 15 JUNE 2026)
+    date_str = pdf.date_str.upper()
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*WHITE)
     pdf.cell(0, 6, date_str, align="R", ln=1)
@@ -531,27 +666,7 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
         logger.error("[PDF] No stories provided for PDF generation.")
         return ""
         
-    sanitized_stories = []
-    for story in stories:
-        sanitized = {}
-        for k, v in story.items():
-            if isinstance(v, str):
-                sanitized[k] = sanitize_text(v)
-            elif isinstance(v, list):
-                new_list = []
-                for item in v:
-                    if isinstance(item, dict):
-                        new_list.append({ik: sanitize_text(iv) if isinstance(iv, str) else iv for ik, iv in item.items()})
-                    elif isinstance(item, str):
-                        new_list.append(sanitize_text(item))
-                    else:
-                        new_list.append(item)
-                sanitized[k] = new_list
-            else:
-                sanitized[k] = v
-        sanitized_stories.append(sanitized)
-        
-    stories = sanitized_stories
+    stories = sanitize_stories(stories)
     
     # Use alias for page numbers
     pdf.alias_nb_pages()

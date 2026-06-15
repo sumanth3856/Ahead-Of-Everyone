@@ -177,6 +177,20 @@ def try_parse_json(content: str) -> Optional[Dict]:
         
     return None
 
+async def _execute_llm_completion(model_id: str, system_prompt: str, user_msg: str, timeout: int = 60) -> Optional[str]:
+    """Helper function to execute OpenRouter/OpenAPI completion call."""
+    try:
+        response = await client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
+            timeout=timeout,
+        )
+        if hasattr(response, 'choices') and response.choices:
+            return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.warning(f"[AI] API call failed for model {model_id}: {e}")
+    return None
+
 async def ai_summarize(title: str, raw_content: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
     """Uses OpenRouter AI to generate a highly structured JSON summary for the premium layout."""
     system_prompt = """You are an elite, Pulitzer-winning tech journalist for 'Ahead of Everyone'.
@@ -215,41 +229,24 @@ You MUST output ONLY valid JSON matching this exact schema, with no markdown for
 
     # 1. Primary Model Attempt
     logger.info(f"[AI] Processing: {title} (Model: {primary_model})")
-    try:
-        response = await client.chat.completions.create(
-            model=primary_model,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
-            timeout=60,
-        )
-        content = response.choices[0].message.content.strip()
+    content = await _execute_llm_completion(primary_model, system_prompt, user_msg)
+    if content:
         parsed = try_parse_json(content)
         if parsed:
             logger.info(f"[AI] Successfully processed: {title} (Model: {primary_model})")
             return parsed
-        else:
-            raise ValueError("JSON parsing and algorithmic repair failed")
-    except Exception as e:
-        logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {primary_model})")
 
     # 2. Sequential Backup Model Attempts
     logger.info(f"Primary model failed. Falling back to {len(backup_models)} backup models sequentially for '{title}'...")
     
     for model_id in backup_models:
         logger.info(f"[AI] Processing fallback: {title} (Model: {model_id})")
-        try:
-            response = await client.chat.completions.create(
-                model=model_id,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
-                timeout=60,
-            )
-            if hasattr(response, 'choices') and response.choices:
-                content = response.choices[0].message.content.strip()
-                parsed = try_parse_json(content)
-                if parsed:
-                    logger.info(f"[AI] Successfully processed: {title} (Model: {model_id})")
-                    return parsed
-        except Exception as e:
-            logger.warning(f"[AI] Unable to process: {title}. Reason: {e} (Model: {model_id})")
+        content = await _execute_llm_completion(model_id, system_prompt, user_msg)
+        if content:
+            parsed = try_parse_json(content)
+            if parsed:
+                logger.info(f"[AI] Successfully processed: {title} (Model: {model_id})")
+                return parsed
             
     logger.error(f"All AI models exhausted for '{title}'.")
     return None
@@ -308,6 +305,27 @@ async def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
         logger.error(f"Error fetching RSS {feed_url}: {e}")
     return items
 
+def is_block_or_error_page(text: str) -> bool:
+    if not text:
+        return False
+    lower_text = text.lower()
+    signatures = [
+        "429 too many requests",
+        "too many requests",
+        "access denied",
+        "cloudflare",
+        "security check",
+        "bot protection",
+        "403 forbidden",
+        "unauthorized",
+        "hcaptcha",
+        "recaptcha"
+    ]
+    for sig in signatures:
+        if sig in lower_text:
+            return True
+    return False
+
 async def fetch_full_article_text(url: str) -> str:
     """Scrapes the full article text from the URL using Jina Reader (with BeautifulSoup fallback)."""
     logger.info(f"Attempting deep scrape for text using Jina Reader: {url}")
@@ -326,7 +344,9 @@ async def fetch_full_article_text(url: str) -> str:
         ) as resp:
             resp.raise_for_status()
             text = await resp.text()
-            if len(text.strip()) > 50:
+            if is_block_or_error_page(text):
+                logger.warning(f"Jina Reader returned a block/error signature page for {url}")
+            elif len(text.strip()) > 50:
                 logger.info(f"Successfully scraped with Jina Reader: {url}")
                 return text
     except Exception as e:
@@ -341,6 +361,9 @@ async def fetch_full_article_text(url: str) -> str:
         ) as resp:
             resp.raise_for_status()
             text_content = await resp.text()
+            if is_block_or_error_page(text_content):
+                logger.warning(f"Standard fallback returned a block/error signature page for {url}")
+                return ""
             
         def parse_html(html):
             soup = BeautifulSoup(html, 'html.parser')
@@ -361,8 +384,10 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
     logger.info(f"[SCRAPER] Starting AI Processing for: {item['title']}")
     metadata = item.get('metadata', None)
     
-    # 1. Fetch full text FIRST using Jina Reader
-    full_text_raw = await fetch_full_article_text(item['url'])
+    # 1. Fetch full text FIRST using Jina Reader (check cache first)
+    full_text_raw = item.get('scraped_full_text', None)
+    if not full_text_raw:
+        full_text_raw = await fetch_full_article_text(item['url'])
     
     # 2. Clean the markdown noise to save tokens & improve accuracy
     import re
@@ -396,14 +421,27 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
             if text_source:
                 text = " ".join(text_source.split())
                 if len(text) > limit:
-                    text = text[:limit-3] + "..."
+                    slice_limit = limit - 3
+                    sub_text = text[:slice_limit]
+                    last_space = sub_text.rfind(' ')
+                    if last_space != -1:
+                        text = sub_text[:last_space].rstrip(".,;:!- ") + "..."
+                    else:
+                        text = sub_text + "..."
                 structured_data[key] = text
             else:
                 structured_data[key] = default_msg
         else:
-            structured_data[key] = " ".join(str(structured_data[key]).strip().strip('\'"').split())
-            if len(structured_data[key]) > limit:
-                structured_data[key] = structured_data[key][:limit-3] + "..."
+            val_str = " ".join(str(structured_data[key]).strip().strip('\'"').split())
+            if len(val_str) > limit:
+                slice_limit = limit - 3
+                sub_text = val_str[:slice_limit]
+                last_space = sub_text.rfind(' ')
+                if last_space != -1:
+                    val_str = sub_text[:last_space].rstrip(".,;:!- ") + "..."
+                else:
+                    val_str = sub_text + "..."
+            structured_data[key] = val_str
 
     def is_empty_value(val) -> bool:
         if val is None:
@@ -728,28 +766,50 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
     # ── 3. Slot Allocator ────────────────────────────────────────────────
     selected_items = []
     
-    def pick_from(pool: List[Dict]) -> Optional[Dict]:
-        if pool:
-            return pool.pop(0)
-        return None
+    async def pick_scrapable_from(pool: List[Dict]) -> Optional[Dict]:
+        if not pool:
+            return None
+        candidates = []
+        while pool and len(candidates) < 3:
+            candidates.append(pool.pop(0))
+        if not candidates:
+            return None
+        # Try to scrape the candidates in parallel to check if they are blocked/empty
+        tasks = [asyncio.create_task(fetch_full_article_text(item['url'])) for item in candidates]
+        scraped_texts = await asyncio.gather(*tasks, return_exceptions=True)
+        # Find first successfully scraped one
+        for idx, text in enumerate(scraped_texts):
+            if isinstance(text, str) and len(text.strip()) >= 100:
+                item = candidates[idx]
+                item['scraped_full_text'] = text
+                # Return unused ones back to the pool
+                for u_idx in range(len(candidates) - 1, -1, -1):
+                    if u_idx != idx:
+                        pool.insert(0, candidates[u_idx])
+                return item
+        # If all fail, return the first one as fallback and return the others
+        item = candidates[0]
+        for u_idx in range(len(candidates) - 1, 0, -1):
+            pool.insert(0, candidates[u_idx])
+        return item
 
     # Slot 1: The Apex
-    apex = pick_from(social_pool)
+    apex = await pick_scrapable_from(social_pool)
     if apex:
         selected_items.append(apex)
     
     # Slot 2: Tech – top tech RSS story
-    tech_pick = pick_from(tech_pool)
+    tech_pick = await pick_scrapable_from(tech_pool)
     if tech_pick:
         selected_items.append(tech_pick)
     
     # Slot 3: Science / Medical / Pharma
-    sci_med_pick = pick_from(science_medical_pool)
+    sci_med_pick = await pick_scrapable_from(science_medical_pool)
     if sci_med_pick:
         selected_items.append(sci_med_pick)
     
     # Slot 4: Agriculture / Weather / Climate
-    agri_weather_pick = pick_from(agri_weather_pool)
+    agri_weather_pick = await pick_scrapable_from(agri_weather_pool)
     if agri_weather_pick:
         selected_items.append(agri_weather_pick)
     
@@ -758,7 +818,7 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
     while len(selected_items) < limit:
         filled = False
         for pool in remaining_pools:
-            pick = pick_from(pool)
+            pick = await pick_scrapable_from(pool)
             if pick:
                 selected_items.append(pick)
                 filled = True

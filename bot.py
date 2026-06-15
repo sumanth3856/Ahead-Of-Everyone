@@ -108,6 +108,86 @@ def get_main_menu(first_name: str, is_subscribed: bool = False):
         
     return welcome_text, InlineKeyboardMarkup(keyboard)
 
+async def send_newsletter_document(
+    bot,
+    chat_id: int,
+    file_path: Optional[str] = None,
+    cached_file_id: Optional[str] = None,
+    caption: str = "",
+    reply_markup: Optional[InlineKeyboardMarkup] = None,
+    query: Optional[str] = None,
+    is_broadcast: bool = False,
+    bot_data: Optional[dict] = None
+) -> Optional[str]:
+    """
+    Sends a newsletter PDF to a subscriber.
+    Handles caching, retries, rate-limiting, and automatic unsubscription of blocked chats.
+    """
+    if is_broadcast and bot_data and bot_data.get("broadcast_cancelled", False):
+        raise RuntimeError("Broadcast cancelled by admin.")
+
+    pretty_filename = os.path.basename(file_path).replace("_", " ") if file_path else "AoE_Tech_News.pdf"
+
+    for attempt in range(3):
+        if is_broadcast and bot_data and bot_data.get("broadcast_cancelled", False):
+            raise RuntimeError("Broadcast cancelled by admin.")
+            
+        try:
+            if cached_file_id:
+                await bot.send_document(
+                    chat_id=chat_id,
+                    document=cached_file_id,
+                    caption=caption,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+                return cached_file_id
+            elif file_path and os.path.exists(file_path):
+                with open(file_path, "rb") as file:
+                    msg = await bot.send_document(
+                        chat_id=chat_id,
+                        document=file,
+                        filename=pretty_filename,
+                        caption=caption,
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
+                    if msg and msg.document:
+                        new_file_id = msg.document.file_id
+                        if query:
+                            await database.set_cached_file_id_semantic(query, new_file_id)
+                        else:
+                            await database.set_cached_file_id_exact("latest", new_file_id)
+                        return new_file_id
+            else:
+                logger.error(f"Neither cached_file_id nor valid file_path provided for chat_id {chat_id}")
+                return None
+        except RetryAfter as e:
+            logger.warning(f"Telegram rate limit hit (RetryAfter) for chat {chat_id}. Sleeping for {e.retry_after}s (attempt {attempt + 1}/3)...")
+            await asyncio.sleep(e.retry_after)
+        except Forbidden:
+            logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
+            await database.remove_subscriber(chat_id)
+            break
+        except BadRequest as e:
+            if "chat not found" in str(e).lower():
+                logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
+                await database.remove_subscriber(chat_id)
+            else:
+                logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
+            break
+        except (NetworkError, TimedOut) as e:
+            logger.warning(f"Network error/timeout sending to {chat_id} (attempt {attempt + 1}/3): {e}")
+            if attempt < 2:
+                await asyncio.sleep(1)
+            else:
+                logger.error(f"Failed to send to {chat_id} after all retries: {e}")
+        except Exception as e:
+            logger.error(f"Failed to send to {chat_id} due to unexpected error: {e}")
+            break
+            
+    return None
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a welcome message with an inline keyboard."""
     first_name = update.effective_user.first_name or "Reader"
@@ -229,8 +309,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         cached_file_id = await database.get_cached_file_id_exact("latest")
         if cached_file_id:
             caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
-            try:
-                await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
+            sent_file_id = await send_newsletter_document(
+                bot=context.bot,
+                chat_id=chat_id,
+                cached_file_id=cached_file_id,
+                caption=caption,
+                reply_markup=reply_markup
+            )
+            if sent_file_id:
                 try:
                     if is_media:
                         await query.edit_message_reply_markup(reply_markup=None)
@@ -239,8 +325,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 except Exception as e:
                     logger.debug(f"Could not handle old query message: {e}")
                 return
-            except Exception as e:
-                logger.warning(f"Failed to send cached file_id, generating fresh: {e}")
                 
         loading_msg = await edit_or_reply(text="⏳ *FETCHING NEWS* | Searching for the latest tech stories... Just a moment!")
         
@@ -502,7 +586,6 @@ async def queue_worker(app: Application):
                     if query:
                         caption = f"✅ *SEARCH FINISHED* | Sending your newsletter about *{query}*..."
                         
-                    pretty_filename = os.path.basename(pdf_filename).replace("_", " ") if pdf_filename else "AoE_Tech_News.pdf"
                     if is_subscribed:
                         keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
                     else:
@@ -512,16 +595,15 @@ async def queue_worker(app: Application):
                         ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
-                    if cached_file_id:
-                        msg = await app.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
-                    else:
-                        with open(pdf_filename, "rb") as file:
-                            msg = await app.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
-                            if msg and msg.document:
-                                if query:
-                                    await database.set_cached_file_id_semantic(query, msg.document.file_id)
-                                else:
-                                    await database.set_cached_file_id_exact("latest", msg.document.file_id)
+                    await send_newsletter_document(
+                        bot=app.bot,
+                        chat_id=chat_id,
+                        file_path=pdf_filename,
+                        cached_file_id=cached_file_id,
+                        caption=caption,
+                        reply_markup=reply_markup,
+                        query=query
+                    )
                 finally:
                     if pdf_filename:
                         try:
@@ -561,11 +643,16 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
             ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        try:
-            await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown", reply_markup=reply_markup)
+        sent_file_id = await send_newsletter_document(
+            bot=context.bot,
+            chat_id=chat_id,
+            cached_file_id=cached_file_id,
+            caption=caption,
+            reply_markup=reply_markup,
+            query=query
+        )
+        if sent_file_id:
             return
-        except Exception as e:
-            logger.warning(f"Failed to send cached targeted file_id, generating fresh: {e}")
             
     is_subscribed = await database.is_subscriber(chat_id)
     loading_msg = await update.message.reply_text(f"🚀 *IGNITING ENGINES* | Dispatching AI agents to hunt down the best stories about *{query}*... 🕵️‍♂️✨", parse_mode="Markdown")
@@ -830,45 +917,19 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
                 progress = 90 + int((idx / len(subscribers)) * 9)
                 progress_callback("Delivering", progress, f"Broadcasting newsletter to subscriber {idx + 1} of {len(subscribers)}...")
                 
-            sent = False
-            for attempt in range(3):
-                if context.bot_data.get("broadcast_cancelled", False):
-                    raise RuntimeError("Broadcast cancelled by admin.")
-                try:
-                    if cached_file_id:
-                        await context.bot.send_document(chat_id=chat_id, document=cached_file_id, caption=caption, parse_mode="Markdown")
-                    else:
-                        with open(pdf_filename, "rb") as file:
-                            msg = await context.bot.send_document(chat_id=chat_id, document=file, filename=pretty_filename, caption=caption, parse_mode="Markdown")
-                            if msg and msg.document:
-                                cached_file_id = msg.document.file_id
-                                await database.set_cached_file_id_exact("latest", cached_file_id)
-                    success_count += 1
-                    sent = True
-                    break
-                except RetryAfter as e:
-                    logger.warning(f"Telegram rate limit hit (RetryAfter). Sleeping for {e.retry_after}s (attempt {attempt + 1}/3)...")
-                    await asyncio.sleep(e.retry_after)
-                except Forbidden:
-                    logger.warning(f"User {chat_id} blocked the bot. Removing subscriber.")
-                    await database.remove_subscriber(chat_id)
-                    break
-                except BadRequest as e:
-                    if "chat not found" in str(e).lower():
-                        logger.warning(f"Chat {chat_id} not found. Removing subscriber.")
-                        await database.remove_subscriber(chat_id)
-                    else:
-                        logger.error(f"Failed to send to {chat_id} (BadRequest): {e}")
-                    break
-                except (NetworkError, TimedOut) as e:
-                    logger.warning(f"Network error/timeout sending to {chat_id} (attempt {attempt + 1}/3): {e}")
-                    if attempt < 2:
-                        await asyncio.sleep(1)
-                    else:
-                        logger.error(f"Failed to send to {chat_id} after all retries: {e}")
-                except Exception as e:
-                    logger.error(f"Failed to send to {chat_id} due to unexpected error: {e}")
-                    break
+            sent_file_id = await send_newsletter_document(
+                bot=context.bot,
+                chat_id=chat_id,
+                file_path=pdf_filename,
+                cached_file_id=cached_file_id,
+                caption=caption,
+                is_broadcast=True,
+                bot_data=context.bot_data
+            )
+            if sent_file_id:
+                success_count += 1
+                if not cached_file_id:
+                    cached_file_id = sent_file_id
                 
         logger.info(f"Broadcast completed. Sent to {success_count}/{len(subscribers)} subscribers.")
         if progress_callback:
