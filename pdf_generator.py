@@ -398,16 +398,16 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None, synth
     pdf.set_font("Montserrat", "B", 36)
     pdf.set_text_color(*BLACK)
     if custom_topic:
-        pdf.cell(0, 15, f"THE {custom_topic.upper()} RADAR", ln=1)
+        pdf.multi_cell(186, 15, f"THE {custom_topic.upper()} RADAR", align="L")
     else:
-        pdf.cell(0, 15, "THE RADAR", ln=1)
+        pdf.multi_cell(186, 15, "THE RADAR", align="L")
         
-    pdf.set_y(43)
+    pdf.set_y(pdf.get_y() + 3)
     pdf.set_font("Montserrat", "B", 10)
     pdf.set_text_color(*BRAND_ACCENT)
     pdf.cell(0, 6, "ONE PATTERN. TOLD FIVE DIFFERENT WAYS.", align="L", ln=1)
     
-    pdf.set_y(50)
+    pdf.set_y(pdf.get_y() + 1)
     pdf.set_font("Montserrat", "", 11)
     pdf.set_text_color(*BLACK)
     intro_text = "The last 24 hours were not a list of unrelated stories. Read in sequence, they are one shift, told in five voices."
@@ -445,14 +445,15 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None, synth
         pdf.set_font("Montserrat", "B", 11)
         pdf.set_text_color(*BLACK)
         headline = story.get("headline", "")
-        pdf.cell(0, 6, f"{str(idx + 1).zfill(2)}  {headline}", align="L", ln=1)
+        hl_text = f"{str(idx + 1).zfill(2)}  {headline}"
+        pdf.multi_cell(182, 6, hl_text, align="L")
         
         pdf.set_x(16)
         pdf.set_font("Montserrat", "", 10)
         pdf.set_text_color(100, 100, 100)
         brief = story.get("the_brief", "")
         brief = truncate_to_word_boundary(brief, 120)
-        pdf.cell(0, 5, brief, align="L", ln=1)
+        pdf.multi_cell(182, 5, brief, align="L")
         
         y_ptr = pdf.get_y() + 3
         

@@ -905,7 +905,7 @@ async def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None
     registry = await load_sent_registry()
     unique_items = []
     for item in raw_items:
-        if not is_duplicate_or_rehash(item['title'], item['link'], registry + unique_items, jaccard_threshold=0.2):
+        if not is_duplicate_or_rehash(item['title'], item['url'], registry + unique_items, jaccard_threshold=0.2):
             item['token_set'] = set(WORD_TOKEN_RE.findall(item['title'].lower().strip()))
             unique_items.append(item)
             
