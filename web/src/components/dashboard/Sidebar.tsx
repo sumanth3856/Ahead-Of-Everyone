@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Newspaper, Settings, LogOut, TerminalSquare, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import ThemeToggle from "./ThemeToggle";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -18,10 +19,10 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile Toggle Button (Visible only on small screens, absolute positioned) */}
+      {/* Mobile Toggle Button */}
       <button 
         onClick={() => setIsOpen(true)}
-        className="md:hidden fixed top-5 left-4 z-50 p-2 glass rounded-lg text-brand hover:text-brand-light transition-colors"
+        className="md:hidden fixed top-5 left-4 z-50 p-2 bg-surface border border-border-subtle rounded-lg text-brand hover:opacity-80 transition-colors shadow-sm"
       >
         <Menu className="h-6 w-6" />
       </button>
@@ -36,7 +37,7 @@ export default function Sidebar() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsOpen(false)}
-              className="md:hidden fixed inset-0 bg-background/80 backdrop-blur-sm z-40"
+              className="md:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
             />
             
             <motion.aside 
@@ -44,17 +45,17 @@ export default function Sidebar() {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-              className="fixed md:static inset-y-0 left-0 w-64 border-r border-brand/20 glass flex flex-col z-50 bg-background md:translate-x-0"
+              className="fixed md:static inset-y-0 left-0 w-64 border-r border-border-subtle bg-background flex flex-col z-50 md:translate-x-0 shadow-sm"
             >
-              <div className="h-20 flex items-center justify-between px-6 border-b border-brand/20">
+              <div className="h-20 flex items-center justify-between px-6 border-b border-border-subtle bg-surface/50">
                 <Link href="/" className="flex items-center gap-2 group">
-                  <TerminalSquare className="text-brand h-6 w-6 group-hover:text-brand-light transition-colors" />
+                  <TerminalSquare className="text-brand h-6 w-6 group-hover:opacity-80 transition-colors" />
                   <span className="font-bold tracking-widest text-foreground group-hover:text-brand transition-colors text-sm">
                     AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors">EVERYONE</span>
                   </span>
                 </Link>
                 {/* Mobile Close Button */}
-                <button onClick={() => setIsOpen(false)} className="md:hidden text-muted hover:text-brand-light">
+                <button onClick={() => setIsOpen(false)} className="md:hidden text-muted hover:text-brand font-bold">
                   <X className="h-6 w-6" />
                 </button>
               </div>
@@ -67,23 +68,27 @@ export default function Sidebar() {
                       key={item.name} 
                       href={item.href}
                       onClick={() => setIsOpen(false)}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 ${
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 font-bold ${
                         isActive 
-                          ? "bg-brand/10 border-l-2 border-brand text-brand-light text-glow" 
-                          : "text-muted hover:text-foreground hover:bg-surface-hover"
+                          ? "bg-brand/10 border-l-4 border-brand text-brand" 
+                          : "text-muted hover:text-brand hover:bg-surface"
                       }`}
                     >
                       <item.icon className="h-5 w-5" />
-                      <span className="font-medium text-sm tracking-wide">{item.name}</span>
+                      <span className="font-bold text-sm tracking-wide">{item.name}</span>
                     </Link>
                   );
                 })}
               </div>
               
-              <div className="p-4 border-t border-brand/20">
-                <button className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-muted hover:text-red-400 hover:bg-red-500/10 transition-all duration-300 text-left cursor-pointer">
+              <div className="p-4 border-t border-border-subtle bg-surface/50 space-y-4">
+                <div className="flex items-center justify-between px-4">
+                  <span className="text-sm font-bold text-muted">Theme</span>
+                  <ThemeToggle />
+                </div>
+                <button className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-muted hover:text-red-600 hover:bg-red-500/10 transition-all duration-300 text-left cursor-pointer font-bold">
                   <LogOut className="h-5 w-5" />
-                  <span className="font-medium text-sm tracking-wide">Disconnect</span>
+                  <span className="font-bold text-sm tracking-wide">Sign Out</span>
                 </button>
               </div>
             </motion.aside>

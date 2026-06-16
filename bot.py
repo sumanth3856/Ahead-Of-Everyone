@@ -11,6 +11,7 @@ load_dotenv()
 
 from functools import wraps
 from aiohttp import web
+from storage import upload_pdf_to_supabase
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -155,10 +156,16 @@ async def send_newsletter_document(
                     )
                     if msg and msg.document:
                         new_file_id = msg.document.file_id
+                        
+                        # Upload to Supabase Storage before caching
+                        supabase_path = None
+                        if file_path and os.path.exists(file_path):
+                            supabase_path = await upload_pdf_to_supabase(file_path, query or "latest")
+                            
                         if query:
-                            await database.set_cached_file_id_semantic(query, new_file_id)
+                            await database.set_cached_file_id_semantic(query, new_file_id, supabase_path)
                         else:
-                            await database.set_cached_file_id_exact("latest", new_file_id)
+                            await database.set_cached_file_id_exact("latest", new_file_id, supabase_path)
                         return new_file_id
             else:
                 logger.error(f"Neither cached_file_id nor valid file_path provided for chat_id {chat_id}")

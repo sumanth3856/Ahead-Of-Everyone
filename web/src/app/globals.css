@@ -5,17 +5,40 @@
   
   --color-brand: #711bd1;
   --color-brand-light: #8e3ee4;
-  --color-brand-glow: rgba(113, 27, 209, 0.5);
+  --color-brand-glow: rgba(113, 27, 209, 0.3);
   
-  --color-background: #050508; /* Deep cyberpunk black */
-  --color-surface: #111116;    /* Card background */
-  --color-surface-hover: #1a1a24;
-  --color-foreground: #f8f8f8;
-  --color-muted: #8a8a99;
+  --color-background: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-foreground: var(--fg);
+  --color-muted: var(--muted);
+  --color-border-subtle: var(--border-subtle);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 :root {
-  color-scheme: dark;
+  /* Light Mode - Ultra Crisp White & Zinc */
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --surface-hover: #f4f4f5;
+  --fg: #09090b;
+  --muted: #71717a;
+  --border-subtle: #e4e4e7;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+}
+
+.dark {
+  /* Dark Mode - Deep Black with subtle Purple borders */
+  --bg: #09090b;
+  --surface: #18181b;
+  --surface-hover: #27272a;
+  --fg: #ffffff;
+  --muted: #a1a1aa;
+  --border-subtle: rgba(113, 27, 209, 0.2);
+  --glass-bg: rgba(24, 24, 27, 0.6);
 }
 
 body {
@@ -24,18 +47,23 @@ body {
   font-family: var(--font-sans), sans-serif;
 }
 
-/* Custom Cyberpunk Utilities */
+/* Custom Utilities */
 @utility glass {
-  background: rgba(17, 17, 22, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(113, 27, 209, 0.15);
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 @utility text-glow {
-  text-shadow: 0 0 12px var(--color-brand-glow);
+  text-shadow: 0 0 16px var(--color-brand-glow);
 }
 
 @utility bg-glow {
-  box-shadow: 0 0 25px 0 var(--color-brand-glow);
+  box-shadow: 0 0 30px 0 var(--color-brand-glow);
+}
+
+@utility noise-bg {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
 }

@@ -1,114 +1,155 @@
-import { ShieldCheck, Activity, Send, Clock } from "lucide-react";
+import { ShieldCheck, Activity, Send, Clock, Download, FileText, AlertCircle } from "lucide-react";
+import { createClient } from "@/utils/supabase/server";
+import { redirect } from "next/navigation";
+import Link from "next/link";
 
-export default function DashboardHome() {
+export default async function DashboardHome() {
+  const supabase = await createClient();
+  
+  // 1. Fetch Auth State
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    redirect("/login");
+  }
+
+  const fullName = user.user_metadata?.full_name || "Agent";
+  const firstName = fullName.split(' ')[0];
+
+  // 2. Fetch live digests from database
+  const { data: digests, error: dbError } = await supabase
+    .from("digests_cache")
+    .select("topic, generated_date_ist, supabase_path")
+    .order("generated_date_ist", { ascending: false })
+    .limit(10);
+    
+  const recentDigests = digests || [];
+  const totalDigests = recentDigests.length;
+
+  const publicStorageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/daily-digests/`;
+
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-8">
-      <div className="flex items-end justify-between mb-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-2 gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-widest text-foreground">COMMAND <span className="text-brand text-glow">CENTER</span></h1>
+          <h1 className="text-2xl font-bold tracking-widest text-foreground uppercase">
+            Welcome, <span className="text-brand">{firstName}</span>
+          </h1>
           <p className="text-muted text-sm mt-1">Intelligence pipeline active. All systems nominal.</p>
         </div>
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border border-green-500/30 bg-green-500/10 text-green-400 text-xs tracking-widest uppercase">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-green-500/30 bg-green-500/10 text-green-600 text-xs tracking-widest uppercase font-bold shrink-0">
           <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></div>
           Secure Connection
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Telegram Connection Status Card */}
-        <div className="glass rounded-xl p-6 border border-brand/20 lg:col-span-1 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
+        {/* Connection Status Card */}
+        <div className="glass noise-bg rounded-xl p-6 border border-border-subtle lg:col-span-1 relative overflow-hidden group shadow-sm">
+          <div className="absolute top-0 right-0 p-4 opacity-5">
             <Send className="h-24 w-24 text-brand" />
           </div>
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-6">
-              <div className="p-3 rounded-lg bg-brand/10 border border-brand/30">
-                <ShieldCheck className="h-6 w-6 text-brand-light" />
+              <div className="p-3 rounded-lg bg-brand/5 border border-brand/10">
+                <ShieldCheck className="h-6 w-6 text-brand" />
               </div>
-              <h2 className="font-semibold tracking-wide uppercase text-sm">Telegram Link</h2>
+              <h2 className="font-bold tracking-wide uppercase text-sm text-foreground">Account Status</h2>
             </div>
             
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <span className="text-muted text-sm">Status</span>
-                <span className="text-green-400 text-sm font-medium flex items-center gap-1.5 text-glow">
-                  <span className="h-1.5 w-1.5 rounded-full bg-green-400"></span> Connected
+                <span className="text-muted text-sm font-medium">Status</span>
+                <span className="text-green-600 text-sm font-bold flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Active
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted text-sm">Bot Name</span>
-                <span className="text-foreground text-sm">@DailyTechDigestBot</span>
+                <span className="text-muted text-sm font-medium">Email</span>
+                <span className="text-foreground text-sm font-semibold truncate max-w-[150px]">{user.email}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted text-sm">Last Sync</span>
-                <span className="text-foreground text-sm">2 mins ago</span>
+                <span className="text-muted text-sm font-medium">Access</span>
+                <span className="text-foreground text-sm font-semibold">Premium</span>
               </div>
-            </div>
-            
-            <div className="mt-8 pt-4 border-t border-brand/10">
-              <button className="w-full py-2 bg-surface hover:bg-surface-hover border border-brand/20 rounded-lg text-xs uppercase tracking-widest text-muted hover:text-foreground transition-all cursor-pointer">
-                Reconfigure Link
-              </button>
             </div>
           </div>
         </div>
 
         {/* Stats */}
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="glass rounded-xl p-6 border border-brand/20 flex flex-col justify-center">
+          <div className="glass noise-bg rounded-xl p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
             <div className="flex items-center gap-3 mb-2">
-              <Activity className="h-5 w-5 text-brand" />
-              <h3 className="text-muted text-sm uppercase tracking-wider">Articles Processed</h3>
+              <FileText className="h-5 w-5 text-brand" />
+              <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Digests Available</h3>
             </div>
-            <p className="text-4xl font-bold text-foreground">1,204</p>
-            <p className="text-xs text-brand mt-2">+12% from last cycle</p>
+            <p className="text-4xl font-extrabold text-foreground">{totalDigests}</p>
+            <p className="text-xs text-brand font-semibold mt-2">Latest intelligence reports</p>
           </div>
-          <div className="glass rounded-xl p-6 border border-brand/20 flex flex-col justify-center">
+          <div className="glass noise-bg rounded-xl p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
             <div className="flex items-center gap-3 mb-2">
               <Clock className="h-5 w-5 text-brand" />
-              <h3 className="text-muted text-sm uppercase tracking-wider">Next Delivery In</h3>
+              <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Latest Update</h3>
             </div>
-            <p className="text-4xl font-bold text-foreground">04:12:00</p>
-            <p className="text-xs text-muted mt-2">Scheduled for 08:00 UTC</p>
+            <p className="text-xl sm:text-2xl font-extrabold text-foreground truncate">
+              {recentDigests.length > 0 ? recentDigests[0].generated_date_ist : "N/A"}
+            </p>
+            <p className="text-xs text-muted font-semibold mt-2">Time in IST</p>
           </div>
         </div>
       </div>
 
+      {dbError && (
+        <div className="p-4 rounded-xl border flex items-start gap-3 text-sm bg-red-500/10 border-red-500/20 text-red-400">
+          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">Database Access Error</p>
+            <p className="opacity-80">Row Level Security (RLS) might be blocking access to the digests_cache table. Please check your Supabase policies.</p>
+          </div>
+        </div>
+      )}
+
       {/* Recent Digests Table */}
-      <div className="glass rounded-xl border border-brand/20 overflow-hidden">
-        <div className="p-6 border-b border-brand/20 flex justify-between items-center bg-surface/50">
-          <h2 className="font-semibold tracking-wide uppercase text-sm">Recent Transmissions</h2>
-          <button className="text-xs text-brand hover:text-brand-light uppercase tracking-widest transition-colors cursor-pointer">View All</button>
+      <div className="glass noise-bg rounded-xl border border-border-subtle overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-surface">
+          <h2 className="font-bold tracking-wide uppercase text-sm text-foreground">Recent Transmissions</h2>
+          <span className="text-xs text-muted font-bold uppercase tracking-widest">Live Feed</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted uppercase bg-brand/5 border-b border-brand/10">
+            <thead className="text-xs text-muted uppercase bg-surface/50 border-b border-border-subtle">
               <tr>
-                <th className="px-6 py-4 font-medium tracking-wider">Digest ID</th>
-                <th className="px-6 py-4 font-medium tracking-wider">Date Sent</th>
-                <th className="px-6 py-4 font-medium tracking-wider">Articles</th>
-                <th className="px-6 py-4 font-medium tracking-wider">Status</th>
+                <th className="px-6 py-4 font-bold tracking-wider">Topic</th>
+                <th className="px-6 py-4 font-bold tracking-wider">Date Generated (IST)</th>
+                <th className="px-6 py-4 font-bold tracking-wider text-right">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-brand/10">
-              {[
-                { id: "DGST-902", date: "Today, 08:00", articles: 5, status: "Delivered" },
-                { id: "DGST-901", date: "Yesterday, 08:00", articles: 8, status: "Delivered" },
-                { id: "DGST-900", date: "Jun 10, 08:00", articles: 6, status: "Delivered" },
-                { id: "DGST-899", date: "Jun 09, 08:00", articles: 4, status: "Failed" },
-              ].map((row, i) => (
-                <tr key={i} className="hover:bg-brand/5 transition-colors group">
-                  <td className="px-6 py-4 font-medium text-foreground group-hover:text-brand-light transition-colors">{row.id}</td>
-                  <td className="px-6 py-4 text-muted">{row.date}</td>
-                  <td className="px-6 py-4 text-muted">{row.articles} payload items</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-xs tracking-wider uppercase border ${
-                      row.status === "Delivered" 
-                        ? "bg-green-500/10 text-green-400 border-green-500/30" 
-                        : "bg-red-500/10 text-red-400 border-red-500/30"
-                    }`}>
-                      {row.status}
-                    </span>
+            <tbody className="divide-y divide-black/5">
+              {recentDigests.length === 0 && !dbError && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-muted italic">
+                    No intelligence digests available yet.
+                  </td>
+                </tr>
+              )}
+              {recentDigests.map((row, i) => (
+                <tr key={i} className="hover:bg-surface transition-colors group">
+                  <td className="px-6 py-4 font-bold text-foreground group-hover:text-brand transition-colors capitalize">
+                    {row.topic === "latest" ? "Daily Tech Briefing" : row.topic}
+                  </td>
+                  <td className="px-6 py-4 text-muted font-medium whitespace-nowrap">{row.generated_date_ist}</td>
+                  <td className="px-6 py-4 text-right">
+                    {row.supabase_path ? (
+                      <Link 
+                        href={`${publicStorageUrl}${row.supabase_path}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand text-brand hover:text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300"
+                      >
+                        <Download size={14} /> Download
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-muted italic">Processing...</span>
+                    )}
                   </td>
                 </tr>
               ))}

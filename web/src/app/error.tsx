@@ -26,7 +26,7 @@ export default function Error({
             // Attempt to recover by trying to re-render the segment
             () => reset()
           }
-          className="bg-brand/10 border border-brand/50 text-brand-light font-semibold tracking-widest text-xs uppercase py-2 px-4 rounded hover:bg-brand hover:text-white transition-all duration-300"
+          className="bg-brand/10 border border-brand/50 text-brand font-semibold tracking-widest text-xs uppercase py-2 px-4 rounded hover:bg-brand/90 hover:text-white transition-all duration-300"
         >
           Try again
         </button>

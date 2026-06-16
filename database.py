@@ -111,6 +111,7 @@ async def init_db():
                 )
             """)
             try:
+                await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS supabase_path TEXT;")
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
                 # Verify that the column was successfully added/exists
                 col_check = await conn.fetchrow("""
@@ -328,27 +329,29 @@ async def get_cached_file_id_exact(topic: str) -> str | None:
         logger.error(f"Error reading exact cache: {e}")
     return None
 
-async def set_cached_file_id_exact(topic: str, file_id: str):
+async def set_cached_file_id_exact(topic: str, file_id: str, supabase_path: str = None):
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
         if HAS_VECTOR_COLUMN:
             await execute_with_retry("""
-                INSERT INTO digests_cache (topic, file_id, generated_date_ist)
-                VALUES ($1, $2, $3)
+                INSERT INTO digests_cache (topic, file_id, generated_date_ist, supabase_path)
+                VALUES ($1, $2, $3, $4)
                 ON CONFLICT (topic) DO UPDATE 
                 SET file_id = EXCLUDED.file_id,
                     generated_date_ist = EXCLUDED.generated_date_ist,
+                    supabase_path = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path),
                     topic_embedding = NULL
-            """, versioned_topic, file_id, current_ist_date)
+            """, versioned_topic, file_id, current_ist_date, supabase_path)
         else:
             await execute_with_retry("""
-                INSERT INTO digests_cache (topic, file_id, generated_date_ist)
-                VALUES ($1, $2, $3)
+                INSERT INTO digests_cache (topic, file_id, generated_date_ist, supabase_path)
+                VALUES ($1, $2, $3, $4)
                 ON CONFLICT (topic) DO UPDATE 
                 SET file_id = EXCLUDED.file_id,
-                    generated_date_ist = EXCLUDED.generated_date_ist
-            """, versioned_topic, file_id, current_ist_date)
+                    generated_date_ist = EXCLUDED.generated_date_ist,
+                    supabase_path = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path)
+            """, versioned_topic, file_id, current_ist_date, supabase_path)
     except Exception as e:
         logger.error(f"Error writing exact cache: {e}")
 
@@ -382,14 +385,14 @@ async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> st
         logger.error(f"Error reading semantic cache: {e}")
     return None
 
-async def set_cached_file_id_semantic(topic: str, file_id: str):
+async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: str = None):
     if not HAS_VECTOR_COLUMN:
-        await set_cached_file_id_exact(topic, file_id)
+        await set_cached_file_id_exact(topic, file_id, supabase_path)
         return
         
     embedding = await get_embedding(topic)
     if not embedding:
-        await set_cached_file_id_exact(topic, file_id)
+        await set_cached_file_id_exact(topic, file_id, supabase_path)
         return
         
     current_ist_date = get_current_ist_date()
@@ -397,12 +400,13 @@ async def set_cached_file_id_semantic(topic: str, file_id: str):
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     try:
         await execute_with_retry("""
-            INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding)
-            VALUES ($1, $2, $3, $4::vector)
+            INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding, supabase_path)
+            VALUES ($1, $2, $3, $4::vector, $5)
             ON CONFLICT (topic) DO UPDATE 
             SET file_id = EXCLUDED.file_id,
                 generated_date_ist = EXCLUDED.generated_date_ist,
-                topic_embedding = EXCLUDED.topic_embedding
-        """, versioned_topic, file_id, current_ist_date, vec_str)
+                topic_embedding = EXCLUDED.topic_embedding,
+                supabase_path = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path)
+        """, versioned_topic, file_id, current_ist_date, vec_str, supabase_path)
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")
