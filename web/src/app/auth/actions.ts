@@ -5,68 +5,84 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 
 export async function login(formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-  const supabase = await createClient()
+  try {
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    const supabase = await createClient()
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-  if (error) {
-    redirect(`/login?message=${encodeURIComponent(error.message)}`)
+    if (error) {
+      return redirect(`/login?message=${encodeURIComponent(error.message)}`)
+    }
+
+    revalidatePath('/', 'layout')
+    return redirect('/dashboard')
+  } catch (error: any) {
+    if (error?.message === 'NEXT_REDIRECT') {
+      throw error;
+    }
+    console.error("Login action crashed:", error);
+    return redirect(`/login?message=${encodeURIComponent("An unexpected server error occurred.")}`)
   }
-
-  revalidatePath('/', 'layout')
-  redirect('/dashboard')
 }
 
 export async function signup(formData: FormData) {
-  const email = formData.get('email') as string
-  const password = formData.get('password') as string
-  const name = formData.get('name') as string
-  const supabase = await createClient()
+  try {
+    const email = formData.get('email') as string
+    const password = formData.get('password') as string
+    const name = formData.get('name') as string
+    const supabase = await createClient()
 
-  // 1. Sign up the user
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        full_name: name,
+    // 1. Sign up the user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: name,
+        }
       }
+    })
+
+    if (authError) {
+      return redirect(`/signup?message=${encodeURIComponent(authError.message)}`)
     }
-  })
 
-  if (authError) {
-    redirect(`/signup?message=${encodeURIComponent(authError.message)}`)
-  }
+    // 2. We use the service role key to insert the profile directly
+    if (authData.user && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
+      const supabaseAdmin = createSupabaseClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+      );
 
-  // 2. We use the service role key to insert the profile directly, 
-  // ensuring it works even if RLS is restrictive.
-  if (authData.user) {
-    const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
-    const supabaseAdmin = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
-    // This will silently fail if the table doesn't exist, preventing app crashes
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .insert({
-        id: authData.user.id,
-        full_name: name,
-      });
-      
-    if (profileError) {
-      console.warn("Could not create profile record (safe to ignore if you don't use profiles table yet):", profileError.message);
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          full_name: name,
+        });
+        
+      if (profileError) {
+        console.warn("Could not create profile record:", profileError.message);
+      }
+    } else if (authData.user && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.warn("SUPABASE_SERVICE_ROLE_KEY is missing. Skipping profile creation.");
     }
-  }
 
-  revalidatePath('/', 'layout')
-  redirect('/dashboard')
+    revalidatePath('/', 'layout')
+    return redirect('/dashboard')
+  } catch (error: any) {
+    if (error?.message === 'NEXT_REDIRECT') {
+      throw error; // Re-throw Next.js redirect errors so they work correctly
+    }
+    console.error("Signup action crashed:", error);
+    return redirect(`/signup?message=${encodeURIComponent("An unexpected server error occurred.")}`)
+  }
 }
 
 
