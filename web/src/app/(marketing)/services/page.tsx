@@ -18,7 +18,7 @@ export default function ServicesPage() {
 
   const cardVariants: Variants = {
     hidden: { opacity: 0, y: 50 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+    show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: ("easeOut" as any) } },
   };
 
   return (
@@ -26,7 +26,7 @@ export default function ServicesPage() {
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
+        transition={{ duration: 0.6, ease: ("easeOut" as any) }}
         className="text-center mb-10 sm:mb-14"
       >
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter mb-4 sm:mb-6 leading-tight text-foreground">
