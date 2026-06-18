@@ -3,7 +3,7 @@
 import { Zap, Database, Cpu, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { motion, Variants } from "framer-motion";
-import { SpotlightCard } from "@/components/ui/SpotlightCard";
+import { SpatialCard } from "@/components/ui/SpatialCard";
 
 export default function ServicesPage() {
   const containerVariants: Variants = {
@@ -41,11 +41,11 @@ export default function ServicesPage() {
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-1 md:grid-cols-6 gap-6 sm:gap-8"
+        className="grid grid-cols-1 md:grid-cols-6 gap-6 sm:gap-8 perspective-[1200px]"
       >
         {/* Tier 1: Daily Digest */}
-        <motion.div variants={cardVariants} className="md:col-span-6 lg:col-span-4 h-full">
-          <SpotlightCard className="h-full rounded-3xl p-6 sm:p-10 border border-brand/30 shadow-sm hover:shadow-lg transition-all duration-500 flex flex-col group hover:-translate-y-1">
+        <motion.div variants={cardVariants} className="md:col-span-6 lg:col-span-4 h-full transform-style-3d">
+          <SpatialCard depth={15} className="h-full rounded-[2.5rem] p-6 sm:p-10 border border-brand/30 shadow-sm hover:shadow-spatial transition-all duration-500 flex flex-col group">
             <div className="absolute top-0 right-0 w-full h-1 bg-gradient-to-r from-brand to-brand-light opacity-80 group-hover:opacity-100 transition-opacity" />
             
             <div className="flex items-center gap-4 mb-6">
@@ -86,14 +86,14 @@ export default function ServicesPage() {
             <Link href="/login" aria-label="Initialize Daily Digest Protocol" className="w-full sm:w-1/2 py-4 rounded-xl bg-brand text-white text-center font-bold tracking-widest uppercase hover:opacity-90 hover:shadow-md active:scale-95 transition-all duration-300 flex justify-center items-center gap-2 mt-auto">
               Initialize <Zap size={18} className="fill-current opacity-50" />
             </Link>
-          </SpotlightCard>
+          </SpatialCard>
         </motion.div>
 
         {/* Tier 2 & 3 wrapper for Desktop */}
         <div className="md:col-span-6 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-6 sm:gap-8 h-full">
           {/* Tier 2: B2B API */}
-          <motion.div variants={cardVariants} className="h-full">
-            <SpotlightCard className="h-full rounded-3xl p-6 border border-border-subtle shadow-sm transition-all duration-500 flex flex-col group grayscale hover:grayscale-0">
+          <motion.div variants={cardVariants} className="h-full transform-style-3d">
+            <SpatialCard depth={25} className="h-full rounded-[2.5rem] p-6 border border-border-subtle shadow-sm transition-all duration-500 flex flex-col group grayscale hover:grayscale-0 bg-surface/50">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-10 h-10 rounded-lg bg-surface-hover flex items-center justify-center group-hover:bg-brand/10 transition-colors duration-300">
                   <Database className="text-muted group-hover:text-brand transition-colors" size={20} />
@@ -112,12 +112,12 @@ export default function ServicesPage() {
               <button disabled aria-label="Data API Coming Soon" className="w-full py-3 rounded-lg bg-surface border border-border-subtle text-muted text-center font-bold text-xs tracking-widest uppercase cursor-not-allowed mt-auto">
                 Coming Soon
               </button>
-            </SpotlightCard>
+            </SpatialCard>
           </motion.div>
 
           {/* Tier 3: Consulting */}
-          <motion.div variants={cardVariants} className="h-full">
-            <SpotlightCard className="h-full rounded-3xl p-6 border border-border-subtle shadow-sm transition-all duration-500 flex flex-col group grayscale hover:grayscale-0">
+          <motion.div variants={cardVariants} className="h-full transform-style-3d">
+            <SpatialCard depth={25} className="h-full rounded-[2.5rem] p-6 border border-border-subtle shadow-sm transition-all duration-500 flex flex-col group grayscale hover:grayscale-0 bg-surface/50">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-10 h-10 rounded-lg bg-surface-hover flex items-center justify-center group-hover:bg-brand/10 transition-colors duration-300">
                   <Cpu className="text-muted group-hover:text-brand transition-colors" size={20} />
@@ -133,10 +133,10 @@ export default function ServicesPage() {
                 <span className="text-2xl font-extrabold text-foreground opacity-80 tracking-tight">Custom</span>
               </div>
               
-              <button disabled aria-label="Architecture Consulting Waitlist Full" className="w-full py-3 rounded-lg bg-surface border border-border-subtle text-muted text-center font-bold text-xs tracking-widest uppercase cursor-not-allowed mt-auto">
+              <button disabled aria-label="Architecture Consulting Waitlist Full" className="w-full py-3 rounded-lg bg-background border border-border-subtle text-muted text-center font-bold text-xs tracking-widest uppercase cursor-not-allowed mt-auto">
                 Waitlist Full
               </button>
-            </SpotlightCard>
+            </SpatialCard>
           </motion.div>
         </div>
       </motion.div>

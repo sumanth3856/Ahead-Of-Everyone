@@ -172,7 +172,7 @@ def try_parse_json(content: str) -> Optional[Dict]:
         
     return None
 
-async def _execute_llm_completion(model_id: str, system_prompt: str, user_msg: str, timeout: int = 60) -> Optional[str]:
+async def _execute_llm_completion(model_id: str, system_prompt: str, user_msg: str, timeout: int = 25) -> Optional[str]:
     """Helper function to execute OpenRouter/OpenAPI completion call."""
     try:
         response = await client.chat.completions.create(

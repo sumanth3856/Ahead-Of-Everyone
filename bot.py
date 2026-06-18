@@ -162,10 +162,11 @@ async def send_newsletter_document(
                         if file_path and os.path.exists(file_path):
                             supabase_path = await upload_pdf_to_supabase(file_path, query or "latest")
                             
+                        user_id = await database.get_user_id_by_chat_id(chat_id)
                         if query:
-                            await database.set_cached_file_id_semantic(query, new_file_id, supabase_path)
+                            await database.set_cached_file_id_semantic(query, new_file_id, supabase_path, user_id=user_id)
                         else:
-                            await database.set_cached_file_id_exact("latest", new_file_id, supabase_path)
+                            await database.set_cached_file_id_exact("latest", new_file_id, supabase_path, user_id=user_id)
                         return new_file_id
             else:
                 logger.error(f"Neither cached_file_id nor valid file_path provided for chat_id {chat_id}")
@@ -314,7 +315,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        cached_file_id = await database.get_cached_file_id_exact("latest")
+        user_id = await database.get_user_id_by_chat_id(chat_id)
+        cached_file_id = await database.get_cached_file_id_exact("latest", user_id=user_id)
         if cached_file_id:
             caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
             sent_file_id = await send_newsletter_document(
@@ -551,10 +553,11 @@ async def queue_worker(app: Application):
         cached_file_id = None
         try:
             # Double-check cache right before generation to prevent redundant duplicate jobs
+            user_id = await database.get_user_id_by_chat_id(chat_id)
             if query:
-                cached_file_id = await database.get_cached_file_id_semantic(query)
+                cached_file_id = await database.get_cached_file_id_semantic(query, user_id=user_id)
             else:
-                cached_file_id = await database.get_cached_file_id_exact("latest")
+                cached_file_id = await database.get_cached_file_id_exact("latest", user_id=user_id)
                 
             if cached_file_id:
                 logger.info(f"[QUEUE] Double-check hit! Found cached PDF for {target_name}. Skipping generation.")
@@ -639,7 +642,8 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text("🤔 *Oops! You forgot the topic!*\nPlease tell me what you want to learn about! \nExample: `/news quantum computing` 🚀", reply_markup=back_keyboard, parse_mode="Markdown")
         return
         
-    cached_file_id = await database.get_cached_file_id_semantic(query)
+    user_id = await database.get_user_id_by_chat_id(chat_id)
+    cached_file_id = await database.get_cached_file_id_semantic(query, user_id=user_id)
     if cached_file_id:
         caption = f"✅ *SEARCH FINISHED* | Sending your newsletter about *{query}*..."
         is_subscribed = await database.is_subscriber(chat_id)
@@ -765,6 +769,23 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         
     await update.message.reply_text("ℹ️ *All quiet on the western front!* No active generation is currently running for you right now. ☕")
 
+async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /link command to link a Telegram account to a web dashboard."""
+    logger.info(f"[BOT] User {update.effective_user.id} invoked /link")
+    chat_id = update.message.chat_id
+    
+    if not context.args:
+        await update.message.reply_text("⚠️ Please provide the link code from your dashboard.\nExample: `/link 123456`", parse_mode="Markdown")
+        return
+        
+    code = context.args[0]
+    success = await database.link_telegram_account(chat_id, code)
+    
+    if success:
+        await update.message.reply_text("✅ *Successfully linked!* Your Telegram account is now connected to the Web Dashboard.", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ *Invalid or expired code.* Please generate a new link code from the dashboard and try again.", parse_mode="Markdown")
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""
     logger.info(f"[BOT] User {update.effective_user.id} invoked /help")
@@ -777,6 +798,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         f"Here is what I can do for you:\n\n"
         f"⚡ `/start` » Open the main menu\n"
         f"🌐 `/news <topic>` » Search for news on a specific topic\n"
+        f"🔗 `/link <code>` » Link your account to the Dashboard\n"
         f"📖 `/help` » Read this help guide\n\n"
     )
     
@@ -849,11 +871,20 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(status_text, reply_markup=reply_markup, parse_mode="Markdown")
 
+async def unknown_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle unknown commands."""
+    text = (
+        "*[ INVALID COMMAND ]*\n\n"
+        "Sorry, I don't recognize that command. Use `/start` to see the main menu."
+    )
+    back_keyboard = get_back_keyboard()
+    await update.message.reply_text(text, reply_markup=back_keyboard, parse_mode="Markdown")
+
 async def general_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle all other text messages."""
     text = (
-        "*[ INVALID COMMAND ]*\n\n"
-        "Sorry, I don't understand that command. Use `/start` to see the main menu, or find news on a specific topic using `/news <topic>`.\n\n"
+        "*[ UNRECOGNIZED INPUT ]*\n\n"
+        "Sorry, I don't understand that input. Use `/start` to see the main menu, or find news on a specific topic using `/news <topic>`.\n\n"
         "Example: `/news new smartphones`"
     )
     back_keyboard = get_back_keyboard()
@@ -956,7 +987,7 @@ async def post_init(app: Application) -> None:
     
     app.bot_data['request_queue'] = asyncio.Queue()
     app.bot_data['queue_list'] = []
-    app.bot_data['queue_worker_task'] = safe_create_task(queue_worker(app))
+    app.bot_data['queue_worker_tasks'] = [safe_create_task(queue_worker(app)) for _ in range(3)]
     
     # Register global/default commands for all users
     try:
@@ -999,11 +1030,12 @@ async def post_init(app: Application) -> None:
 
 async def post_stop(app: Application) -> None:
     """Gracefully close external resources."""
-    worker = app.bot_data.get('queue_worker_task')
-    if worker:
+    workers = app.bot_data.get('queue_worker_tasks', [])
+    for worker in workers:
         worker.cancel()
+    if workers:
         try:
-            await worker
+            await asyncio.gather(*workers, return_exceptions=True)
         except asyncio.CancelledError:
             pass
     await database.close_db()
@@ -1027,6 +1059,7 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("news", safe_handler(news_command)))
     app.add_handler(CommandHandler("status", safe_handler(status_command)))
     app.add_handler(CommandHandler("help", safe_handler(help_command)))
+    app.add_handler(CommandHandler("link", safe_handler(link_command)))
     app.add_handler(CommandHandler("broadcast", safe_handler(admin_broadcast_command)))
     app.add_handler(CommandHandler("stats", safe_handler(admin_stats_command)))
     app.add_handler(CommandHandler("admin_stats", safe_handler(admin_stats_command)))
@@ -1034,7 +1067,8 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("cancel", safe_handler(cancel_command)))
     app.add_handler(CommandHandler("cancel_broadcast", safe_handler(cancel_command)))
     app.add_handler(CallbackQueryHandler(safe_handler(button_handler)))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, safe_handler(general_message_handler)))
+    app.add_handler(MessageHandler(filters.COMMAND, safe_handler(unknown_command_handler)))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, safe_handler(general_message_handler)))
     
     # Register global error handler
     app.add_error_handler(error_handler)

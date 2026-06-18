@@ -1,7 +1,8 @@
 import { ShieldCheck, Activity, Send, Clock, Download, FileText, AlertCircle } from "lucide-react";
 import { createClient } from "@/utils/supabase/server";
-import { redirect } from "next/navigation";
 import Link from "next/link";
+import LinkTelegramClient from "@/components/dashboard/LinkTelegramClient";
+import { SpatialCard } from "@/components/ui/SpatialCard";
 
 export default async function DashboardHome() {
   const supabase = await createClient();
@@ -15,10 +16,20 @@ export default async function DashboardHome() {
   const fullName = user.user_metadata?.full_name || "Agent";
   const firstName = fullName.split(' ')[0];
 
-  // 2. Fetch live digests from database
+  // Fetch user profile to check telegram linkage
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("telegram_chat_id")
+    .eq("id", user.id)
+    .single();
+
+  const isTelegramLinked = !!profile?.telegram_chat_id;
+
+  // 2. Fetch live digests for THIS USER (and global broadcasts)
   const { data: digests, error: dbError } = await supabase
     .from("digests_cache")
     .select("topic, generated_date_ist, supabase_path")
+    .or(`user_id.eq.${user.id},user_id.is.null`)
     .order("generated_date_ist", { ascending: false })
     .limit(10);
     
@@ -44,7 +55,7 @@ export default async function DashboardHome() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Connection Status Card */}
-        <div className="glass noise-bg rounded-xl p-6 border border-border-subtle lg:col-span-1 relative overflow-hidden group shadow-sm">
+        <SpatialCard depth={5} className="glass rounded-[2rem] p-6 border border-border-subtle lg:col-span-1 shadow-sm">
           <div className="absolute top-0 right-0 p-4 opacity-5">
             <Send className="h-24 w-24 text-brand" />
           </div>
@@ -64,8 +75,10 @@ export default async function DashboardHome() {
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted text-sm font-medium">Email</span>
-                <span className="text-foreground text-sm font-semibold truncate max-w-[150px]">{user.email}</span>
+                <span className="text-muted text-sm font-medium">Telegram</span>
+                <span className={isTelegramLinked ? "text-green-500 text-sm font-bold" : "text-yellow-500 text-sm font-bold"}>
+                  {isTelegramLinked ? "Linked" : "Unlinked"}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted text-sm font-medium">Access</span>
@@ -73,19 +86,23 @@ export default async function DashboardHome() {
               </div>
             </div>
           </div>
-        </div>
+        </SpatialCard>
 
-        {/* Stats */}
-        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="glass noise-bg rounded-xl p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
+        {/* Link Telegram Client if unlinked, otherwise show Stats */}
+        {!isTelegramLinked ? (
+          <LinkTelegramClient />
+        ) : (
+          <SpatialCard depth={5} className="glass rounded-[2rem] p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
             <div className="flex items-center gap-3 mb-2">
               <FileText className="h-5 w-5 text-brand" />
               <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Digests Available</h3>
             </div>
             <p className="text-4xl font-extrabold text-foreground">{totalDigests}</p>
             <p className="text-xs text-brand font-semibold mt-2">Latest intelligence reports</p>
-          </div>
-          <div className="glass noise-bg rounded-xl p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
+          </SpatialCard>
+        )}
+
+        <SpatialCard depth={5} className="glass rounded-[2rem] p-6 border border-border-subtle flex flex-col justify-center shadow-sm lg:col-span-1">
             <div className="flex items-center gap-3 mb-2">
               <Clock className="h-5 w-5 text-brand" />
               <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Latest Update</h3>
@@ -94,9 +111,9 @@ export default async function DashboardHome() {
               {recentDigests.length > 0 ? recentDigests[0].generated_date_ist : "N/A"}
             </p>
             <p className="text-xs text-muted font-semibold mt-2">Time in IST</p>
-          </div>
+          </SpatialCard>
         </div>
-      </div>
+
 
       {dbError && (
         <div className="p-4 rounded-xl border flex items-start gap-3 text-sm bg-red-500/10 border-red-500/20 text-red-400">
@@ -109,7 +126,7 @@ export default async function DashboardHome() {
       )}
 
       {/* Recent Digests Table */}
-      <div className="glass noise-bg rounded-xl border border-border-subtle overflow-hidden shadow-sm">
+      <SpatialCard depth={2} className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">
         <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-surface">
           <h2 className="font-bold tracking-wide uppercase text-sm text-foreground">Recent Transmissions</h2>
           <span className="text-xs text-muted font-bold uppercase tracking-widest">Live Feed</span>
@@ -156,7 +173,7 @@ export default async function DashboardHome() {
             </tbody>
           </table>
         </div>
-      </div>
+      </SpatialCard>
     </div>
   );
 }

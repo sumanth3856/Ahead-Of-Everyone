@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Newspaper, Settings, LogOut, TerminalSquare, Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "@/components/ThemeToggle";
+import { logout } from "@/app/auth/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -86,10 +88,15 @@ export default function Sidebar() {
                   <span className="text-sm font-bold text-muted">Theme</span>
                   <ThemeToggle />
                 </div>
-                <button className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-muted hover:text-red-600 hover:bg-red-500/10 transition-all duration-300 text-left cursor-pointer font-bold">
-                  <LogOut className="h-5 w-5" />
-                  <span className="font-bold text-sm tracking-wide">Sign Out</span>
-                </button>
+                <form action={logout} className="w-full">
+                  <SubmitButton 
+                    className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-muted hover:text-red-600 hover:bg-red-500/10 transition-all duration-300 text-left cursor-pointer font-bold"
+                    loadingText="Signing Out"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span className="font-bold text-sm tracking-wide">Sign Out</span>
+                  </SubmitButton>
+                </form>
               </div>
             </motion.aside>
           </>

@@ -13,7 +13,7 @@ export default function DashboardLoading() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Connection Status Card Skeleton */}
-        <div className="glass rounded-xl p-6 border border-border-subtle lg:col-span-1 relative overflow-hidden shadow-sm">
+        <div className="glass rounded-[2rem] p-6 border border-border-subtle lg:col-span-1 relative overflow-hidden shadow-sm">
           <div className="relative z-10">
             <div className="flex items-center gap-3 mb-6">
               <div className="p-3 rounded-lg bg-surface-hover w-12 h-12"></div>
@@ -39,7 +39,7 @@ export default function DashboardLoading() {
 
         {/* Stats Skeleton */}
         <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div className="glass rounded-xl p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
+          <div className="glass rounded-[2rem] p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-5 h-5 rounded-full bg-surface-hover"></div>
               <div className="h-4 w-32 bg-surface-hover rounded"></div>
@@ -47,7 +47,7 @@ export default function DashboardLoading() {
             <div className="h-10 w-24 bg-surface-hover rounded mb-3"></div>
             <div className="h-3 w-40 bg-surface-hover rounded"></div>
           </div>
-          <div className="glass rounded-xl p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
+          <div className="glass rounded-[2rem] p-6 border border-border-subtle flex flex-col justify-center shadow-sm">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-5 h-5 rounded-full bg-surface-hover"></div>
               <div className="h-4 w-32 bg-surface-hover rounded"></div>
@@ -59,7 +59,7 @@ export default function DashboardLoading() {
       </div>
 
       {/* Table Skeleton */}
-      <div className="glass rounded-xl border border-border-subtle overflow-hidden shadow-sm">
+      <div className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">
         <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-surface">
           <div className="h-4 w-48 bg-surface-hover rounded"></div>
           <div className="h-4 w-20 bg-surface-hover rounded"></div>

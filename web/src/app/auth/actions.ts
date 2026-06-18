@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/utils/supabase/server'
 
 export async function login(formData: FormData) {
+  let errorMsg = null;
   try {
     const email = formData.get('email') as string
     const password = formData.get('password') as string
@@ -16,21 +17,23 @@ export async function login(formData: FormData) {
     })
 
     if (error) {
-      return redirect(`/login?message=${encodeURIComponent(error.message)}`)
+      errorMsg = error.message;
     }
-
-    revalidatePath('/', 'layout')
-    return redirect('/dashboard')
   } catch (error: any) {
-    if (error?.message === 'NEXT_REDIRECT') {
-      throw error;
-    }
     console.error("Login action crashed:", error);
-    return redirect(`/login?message=${encodeURIComponent("An unexpected server error occurred.")}`)
+    errorMsg = "An unexpected server error occurred.";
   }
+
+  if (errorMsg) {
+    return redirect(`/login?message=${encodeURIComponent(errorMsg)}`)
+  }
+
+  revalidatePath('/', 'layout')
+  return redirect('/dashboard')
 }
 
 export async function signup(formData: FormData) {
+  let errorMsg = null;
   try {
     const email = formData.get('email') as string
     const password = formData.get('password') as string
@@ -49,40 +52,41 @@ export async function signup(formData: FormData) {
     })
 
     if (authError) {
-      return redirect(`/signup?message=${encodeURIComponent(authError.message)}`)
-    }
+      errorMsg = authError.message;
+    } else {
+      // 2. We use the service role key to insert the profile directly
+      if (authData.user && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
+        const supabaseAdmin = createSupabaseClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
 
-    // 2. We use the service role key to insert the profile directly
-    if (authData.user && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
-      const supabaseAdmin = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY
-      );
-
-      const { error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          full_name: name,
-        });
-        
-      if (profileError) {
-        console.warn("Could not create profile record:", profileError.message);
+        const { error: profileError } = await supabaseAdmin
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            full_name: name,
+          });
+          
+        if (profileError) {
+          console.warn("Could not create profile record:", profileError.message);
+        }
+      } else if (authData.user && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        console.warn("SUPABASE_SERVICE_ROLE_KEY is missing. Skipping profile creation.");
       }
-    } else if (authData.user && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      console.warn("SUPABASE_SERVICE_ROLE_KEY is missing. Skipping profile creation.");
     }
-
-    revalidatePath('/', 'layout')
-    return redirect('/dashboard')
   } catch (error: any) {
-    if (error?.message === 'NEXT_REDIRECT') {
-      throw error; // Re-throw Next.js redirect errors so they work correctly
-    }
     console.error("Signup action crashed:", error);
-    return redirect(`/signup?message=${encodeURIComponent("An unexpected server error occurred.")}`)
+    errorMsg = "An unexpected server error occurred.";
   }
+
+  if (errorMsg) {
+    return redirect(`/signup?message=${encodeURIComponent(errorMsg)}`)
+  }
+
+  revalidatePath('/', 'layout')
+  return redirect('/dashboard')
 }
 
 

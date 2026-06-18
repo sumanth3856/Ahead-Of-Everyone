@@ -70,11 +70,12 @@ async def get_pool():
                     database=database_name,
                     ssl=ssl_mode if ssl_mode != 'disable' else None,
                     min_size=1,
-                    max_size=5
+                    max_size=5,
+                    command_timeout=15
                 )
             except Exception as e:
                 logger.error(f"Failed to connect with parsed params: {e}. Falling back to raw DSN.")
-                _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
+                _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, command_timeout=15)
     return _pool
 
 async def init_db():
@@ -149,13 +150,17 @@ async def execute_with_retry(query: str, *args, is_fetch: bool = False, is_fetch
                 if pool is None:
                     raise asyncpg.exceptions.InterfaceError("Could not establish connection pool.")
             
-            async with pool.acquire() as conn:
+            async with pool.acquire(timeout=10) as conn:
                 if is_fetchrow:
                     return await conn.fetchrow(query, *args)
                 elif is_fetch:
                     return await conn.fetch(query, *args)
                 else:
                     return await conn.execute(query, *args)
+        except asyncio.TimeoutError as e:
+            last_err = e
+            logger.warning(f"Database acquire timeout on attempt {attempt + 1}/3: {e}")
+            await asyncio.sleep(1 * (attempt + 1))
         except (asyncpg.exceptions.InterfaceError, asyncpg.exceptions.InternalClientError) as e:
             last_err = e
             logger.warning(f"Transient DB connection error on attempt {attempt + 1}/3: {e}")
@@ -214,6 +219,28 @@ async def get_all_subscribers() -> list[int]:
     except Exception as e:
         logger.error(f"Error getting subscribers: {e}")
         return []
+
+async def link_telegram_account(chat_id: int, code: str) -> bool:
+    try:
+        row = await execute_with_retry("SELECT id FROM profiles WHERE telegram_link_code = $1", code, is_fetchrow=True)
+        if row:
+            user_id = row['id']
+            await execute_with_retry("UPDATE profiles SET telegram_chat_id = $1, telegram_link_code = NULL WHERE id = $2", chat_id, user_id)
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error linking account: {e}")
+        return False
+
+async def get_user_id_by_chat_id(chat_id: int) -> str | None:
+    try:
+        row = await execute_with_retry("SELECT id FROM profiles WHERE telegram_chat_id = $1", chat_id, is_fetchrow=True)
+        if row:
+            return str(row['id'])
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching user_id: {e}")
+        return None
 
 async def close_db():
     global _pool, _session
@@ -302,6 +329,9 @@ async def get_embedding(text: str) -> list[float] | None:
                     text_resp = await response.text()
                     logger.error(f"HuggingFace embedding failed ({response.status}): {text_resp}")
                     return None
+        except asyncio.TimeoutError:
+            logger.warning("HuggingFace request timed out. Skipping embedding query.")
+            return None
         except aiohttp.ClientConnectorError as e:
             logger.warning(f"HuggingFace connection/DNS error: {e}. Skipping embedding query.")
             return None
@@ -313,14 +343,22 @@ async def get_embedding(text: str) -> list[float] | None:
                 return None
     return None
 
-async def get_cached_file_id_exact(topic: str) -> str | None:
+async def get_cached_file_id_exact(topic: str, user_id: str | None = None) -> str | None:
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
-        row = await execute_with_retry("""
+        query = """
             SELECT file_id, generated_date_ist FROM digests_cache 
             WHERE topic = $1 AND generated_date_ist::DATE = $2::DATE
-        """, versioned_topic, current_ist_date, is_fetchrow=True)
+        """
+        args = [versioned_topic, current_ist_date]
+        if user_id:
+            query += " AND user_id = $3"
+            args.append(user_id)
+        else:
+            query += " AND user_id IS NULL"
+            
+        row = await execute_with_retry(query, *args, is_fetchrow=True)
         if row:
             logger.info(f"[DB] Exact cache hit for '{topic}' (Date: {row['generated_date_ist']})")
             return row['file_id']
@@ -329,54 +367,45 @@ async def get_cached_file_id_exact(topic: str) -> str | None:
         logger.error(f"Error reading exact cache: {e}")
     return None
 
-async def set_cached_file_id_exact(topic: str, file_id: str, supabase_path: str = None):
+async def set_cached_file_id_exact(topic: str, file_id: str, supabase_path: str = None, user_id: str | None = None):
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     current_ist_date = get_current_ist_date()
     try:
-        if HAS_VECTOR_COLUMN:
-            await execute_with_retry("""
-                INSERT INTO digests_cache (topic, file_id, generated_date_ist, supabase_path)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (topic) DO UPDATE 
-                SET file_id = EXCLUDED.file_id,
-                    generated_date_ist = EXCLUDED.generated_date_ist,
-                    supabase_path = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path),
-                    topic_embedding = NULL
-            """, versioned_topic, file_id, current_ist_date, supabase_path)
-        else:
-            await execute_with_retry("""
-                INSERT INTO digests_cache (topic, file_id, generated_date_ist, supabase_path)
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT (topic) DO UPDATE 
-                SET file_id = EXCLUDED.file_id,
-                    generated_date_ist = EXCLUDED.generated_date_ist,
-                    supabase_path = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path)
-            """, versioned_topic, file_id, current_ist_date, supabase_path)
+        await execute_with_retry("""
+            INSERT INTO digests_cache (topic, file_id, generated_date_ist, supabase_path, user_id)
+            VALUES ($1, $2, $3, $4, $5)
+        """, versioned_topic, file_id, current_ist_date, supabase_path, user_id)
     except Exception as e:
         logger.error(f"Error writing exact cache: {e}")
 
-async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> str | None:
+async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85, user_id: str | None = None) -> str | None:
     if not HAS_VECTOR_COLUMN:
         logger.info(f"[DB] Vector support disabled. Falling back to exact match for topic: '{topic}'")
-        return await get_cached_file_id_exact(topic)
+        return await get_cached_file_id_exact(topic, user_id)
         
     embedding = await get_embedding(topic)
     if not embedding:
-        return await get_cached_file_id_exact(topic)
+        return await get_cached_file_id_exact(topic, user_id)
         
     current_ist_date = get_current_ist_date()
     vec_str = str(embedding)
     try:
-        row = await execute_with_retry("""
+        user_filter = "AND user_id = $4" if user_id else "AND user_id IS NULL"
+        args = [vec_str, current_ist_date, threshold]
+        if user_id:
+            args.append(user_id)
+            
+        row = await execute_with_retry(f"""
             SELECT file_id, 1 - (topic_embedding <=> $1::vector) as similarity
             FROM digests_cache
             WHERE generated_date_ist::DATE = $2::DATE
-              AND topic LIKE $4
+              AND topic LIKE '{CACHE_VERSION}:%'
               AND topic_embedding IS NOT NULL
               AND 1 - (topic_embedding <=> $1::vector) >= $3
+              {user_filter}
             ORDER BY similarity DESC
             LIMIT 1
-        """, vec_str, current_ist_date, threshold, f"{CACHE_VERSION}:%", is_fetchrow=True)
+        """, *args, is_fetchrow=True)
         
         if row:
             logger.info(f"[DB] Semantic cache hit for '{topic}' with similarity: {row['similarity']:.3f}")
@@ -385,14 +414,14 @@ async def get_cached_file_id_semantic(topic: str, threshold: float = 0.85) -> st
         logger.error(f"Error reading semantic cache: {e}")
     return None
 
-async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: str = None):
+async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: str = None, user_id: str | None = None):
     if not HAS_VECTOR_COLUMN:
-        await set_cached_file_id_exact(topic, file_id, supabase_path)
+        await set_cached_file_id_exact(topic, file_id, supabase_path, user_id)
         return
         
     embedding = await get_embedding(topic)
     if not embedding:
-        await set_cached_file_id_exact(topic, file_id, supabase_path)
+        await set_cached_file_id_exact(topic, file_id, supabase_path, user_id)
         return
         
     current_ist_date = get_current_ist_date()
@@ -400,13 +429,8 @@ async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: s
     versioned_topic = f"{CACHE_VERSION}:{topic}"
     try:
         await execute_with_retry("""
-            INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding, supabase_path)
-            VALUES ($1, $2, $3, $4::vector, $5)
-            ON CONFLICT (topic) DO UPDATE 
-            SET file_id = EXCLUDED.file_id,
-                generated_date_ist = EXCLUDED.generated_date_ist,
-                topic_embedding = EXCLUDED.topic_embedding,
-                supabase_path = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path)
-        """, versioned_topic, file_id, current_ist_date, vec_str, supabase_path)
+            INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding, supabase_path, user_id)
+            VALUES ($1, $2, $3, $4::vector, $5, $6)
+        """, versioned_topic, file_id, current_ist_date, vec_str, supabase_path, user_id)
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")
