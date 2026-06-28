@@ -255,6 +255,14 @@ def draw_text(pdf, text, font="Montserrat", style="", size=10, color=BLACK, x=No
         else:
             pdf.cell(w, h, text, align=align, ln=1)
 
+def draw_labeled_badge(pdf, text: str, x: int, y: int, font_size: float = 9, bg_color: tuple = BRAND_ACCENT, text_color: tuple = WHITE):
+    pdf.set_xy(x, y)
+    pdf.set_font("Montserrat", "B", font_size)
+    pdf.set_text_color(*text_color)
+    pdf.set_fill_color(*bg_color)
+    w = pdf.get_string_width(text) + 6
+    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
+
 def draw_headline_with_highlight(pdf, headline, highlight_word, font_size, line_height=10, default_color=WHITE, highlight_bg=BRAND_ACCENT, highlight_fg=WHITE):
     pdf.set_font("Montserrat", "B", font_size)
     words = headline.split(" ")
@@ -469,14 +477,7 @@ def draw_toc_page(pdf: CustomPDF, stories: list, custom_topic: str = None, synth
     pdf.set_fill_color(0, 0, 0)
     pdf.rect(12, takeaway_y, 186, takeaway_box_h, 'F')
     
-    pdf.set_xy(17, takeaway_y + 4)
-    pdf.set_font("Montserrat", "B", 8.5)
-    pdf.set_text_color(*WHITE)
-    pdf.set_fill_color(*BRAND_ACCENT)
-    text = "IF YOU TAKE ONE THING FROM THIS"
-    w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
-    
+    draw_labeled_badge(pdf, "IF YOU TAKE ONE THING FROM THIS", 17, takeaway_y + 4, 8.5)
     pdf.set_xy(17, takeaway_y + 10)
     pdf.set_font("Montserrat", "B", 10.5)
     pdf.set_text_color(*WHITE)
@@ -590,17 +591,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     pdf.set_fill_color(0, 0, 0)
     pdf.rect(12, wy, 186, box_h, 'F')
     
-    pdf.set_xy(17, wy + 4)
-    pdf.set_font("Montserrat", "B", 9)
-    pdf.set_text_color(*BLACK)
-    pdf.set_fill_color(245, 245, 245)
-    text = "THE EDGE"
-    w = pdf.get_string_width(text) + 6  # Precise 3mm padding on both sides
-    
-    # We use align="C" to perfectly horizontally center the text in the cell
-    # And we use a balanced cell height to visually center it vertically
-    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
-    
+    draw_labeled_badge(pdf, "THE EDGE", 17, wy + 4, 9, (245, 245, 245), BLACK)
     pdf.set_xy(17, wy + 10)
     pdf.set_font("Montserrat", "B", 12)
     pdf.set_text_color(*WHITE)
@@ -618,14 +609,7 @@ def draw_article_page(pdf: CustomPDF, index: int, story: dict):
     raw_deep_dive = story.get('deep_dive', story.get('the_deep_dive', ''))
     
     # Draw DEEP DIVE heading
-    pdf.set_xy(16, wy)
-    pdf.set_font("Montserrat", "B", 9)
-    pdf.set_text_color(*WHITE)
-    pdf.set_fill_color(*BRAND_ACCENT)
-    text = "DEEP DIVE"
-    w = pdf.get_string_width(text) + 6
-    pdf.cell(w, 5.5, text, align="C", ln=1, fill=True)
-    
+    draw_labeled_badge(pdf, "DEEP DIVE", 16, wy, 9)
     # Draw DEEP DIVE text below heading
     wy_text = wy + 6
     leftover_height_text = 275 - wy_text

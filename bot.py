@@ -12,6 +12,7 @@ load_dotenv()
 from functools import wraps
 from aiohttp import web
 from storage import upload_pdf_to_supabase
+from ui_templates import get_main_menu, get_back_keyboard, get_about_menu, get_stats_menu
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -84,31 +85,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         logger.error("Exception while handling an update:", exc_info=context.error)
 
-def get_back_keyboard():
-    keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
-    return InlineKeyboardMarkup(keyboard)
-
-def get_main_menu(first_name: str, is_subscribed: bool = False):
-    welcome_text = (
-        f"*[ MAIN MENU ]*\n\n"
-        f"Welcome to *Ahead of Everyone*, {first_name}!\n"
-        f"I am your daily AI-powered tech news assistant.\n\n"
-        f"I search through top stories across the tech industry, summarize them, and create a premium daily newsletter just for you.\n\n"
-        f"Click below to get today's latest news, or subscribe to receive it automatically every morning at 10 AM IST."
-    )
-    
-    keyboard = [
-        [
-            InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest"),
-            InlineKeyboardButton("ℹ️ About This Bot", callback_data="about")
-        ]
-    ]
-    if is_subscribed:
-        keyboard.append([InlineKeyboardButton("🔕 Stop Daily Digests", callback_data="unsubscribe")])
-    else:
-        keyboard.append([InlineKeyboardButton("🔔 Get Daily Digests", callback_data="subscribe")])
-        
-    return welcome_text, InlineKeyboardMarkup(keyboard)
 
 async def send_newsletter_document(
     bot,
@@ -205,82 +181,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     welcome_text, reply_markup = get_main_menu(first_name, is_subscribed)
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
-async def update_loading_message(message, bot, progress_state, topic=None) -> None:
-    """Periodically update the loading message based on the real-time progress state from the backend logic."""
-    topic_str = f" about *{topic}*" if topic else ""
-    chat_id = message.chat_id
-    
-    # Animated emojis that cycle on each update to show the bot is alive
-    ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️", "🤖", "📡", "💡"]
-    fun_facts = [
-        "Did you know? The first computer bug was an actual moth found in 1947. 🐛",
-        "Hang tight! Our 120-Billion parameter AI is reading the news faster than a caffeinated squirrel. 🐿️☕",
-        "Fun fact: 90% of the world's data was generated in the last two years alone! 📈",
-        "Just a moment... The AI is doing some heavy mental lifting. 🏋️‍♂️🤖",
-        "Did you know? The Apollo 11 computer had less memory than a modern smart bulb. 💡🚀",
-        "Almost there! Compiling a Pulitzer-level intelligence briefing just for you. 📰✨",
-        "Fun fact: The first domain ever registered was Symbolics.com in 1985. 🌐",
-        "Wait for it... Our digital journalists are putting on the finishing touches! 🧑‍💻✍️"
-    ]
-    idx = 0
-    
-    while True:
-        try:
-            # Trigger active chat action status
-            progress = progress_state.get("progress", 0)
-            action = "upload_document" if progress >= 70 else "typing"
-            try:
-                await bot.send_chat_action(chat_id=chat_id, action=action)
-            except Exception:
-                pass
-                
-            phase = progress_state.get("phase", "Finding Stories")
-            detail = progress_state.get("detail", "🌐 Initializing request...")
-            done_phases = progress_state.get("done_phases", set())
-            
-            tick_emoji = ticker_emojis[idx % len(ticker_emojis)]
-            
-            # Phase statuses synchronized with actual pipeline progression
-            p1_stat = "✅ Sourced" if "Finding Stories" in done_phases else (f"{tick_emoji} Scouting..." if phase == "Finding Stories" else "⏳ Waiting")
-            p2_stat = "✅ Synthesized" if "Writing Summaries" in done_phases else (f"{tick_emoji} Deep Thinking..." if phase == "Writing Summaries" else "⏳ Waiting")
-            p3_stat = "✅ Crafted" if "Creating PDF" in done_phases else (f"{tick_emoji} Designing..." if phase == "Creating PDF" else "⏳ Waiting")
-            p4_stat = "✅ Dispatched" if "Delivering" in done_phases else (f"{tick_emoji} Preparing..." if phase == "Delivering" else "⏳ Waiting")
-            
-            filled_length = int(progress / 5)
-            gauge = "█" * filled_length + "░" * (20 - filled_length)
-            
-            fact = fun_facts[(idx // 4) % len(fun_facts)]
-            
-            text = (
-                f"{tick_emoji} *{BRAND_NAME.upper()}* | Forging your intelligence briefing\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📡 *Sourcing Data:*     {p1_stat}\n"
-                f"🧠 *AI Synthesis:*      {p2_stat}\n"
-                f"🎨 *Publishing PDF:*    {p3_stat}\n"
-                f"🚀 *Dispatching:*       {p4_stat}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"_{fact}_\n\n"
-                f"💡 *Status:* {detail}\n"
-                f"`[{gauge}]`  *{progress}%*"
-            )
-            
-            idx += 1
-            
-            try:
-                await message.edit_text(text=text, parse_mode="Markdown")
-            except Exception as edit_err:
-                # Suppress "Message is not modified" spam
-                if "not modified" not in str(edit_err).lower():
-                    logger.warning(f"Failed to edit progress message: {edit_err}")
-            
-            await asyncio.sleep(6)
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            logger.error(f"Error in update_loading_message: {e}")
-            await asyncio.sleep(6)
-
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle inline keyboard button clicks."""
     query = update.callback_query
@@ -365,19 +265,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await edit_or_reply(text="ℹ️ *NOT SUBSCRIBED* | You are not currently subscribed to daily updates.", reply_markup=back_keyboard)
             
     elif action == "about":
-        about_text = (
-            f"*[ ABOUT THIS BOT ]*\n\n"
-            f"This bot is powered by smart AI. It automatically searches for major news stories, rewrites them to be quick and easy to read, and designs a premium PDF newsletter just for you."
-        )
         is_subscribed = await database.is_subscriber(chat_id)
-        keyboard = [[InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest")]]
-        if is_subscribed:
-            keyboard.append([InlineKeyboardButton("🔕 Stop Daily Digests", callback_data="unsubscribe")])
-        else:
-            keyboard.append([InlineKeyboardButton("🔔 Get Daily Digests", callback_data="subscribe")])
-        keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")])
-        
-        await edit_or_reply(text=about_text, reply_markup=InlineKeyboardMarkup(keyboard))
+        about_text, reply_markup = get_about_menu(is_subscribed)
+        await edit_or_reply(text=about_text, reply_markup=reply_markup)
         
     elif action == "main_menu":
         first_name = query.from_user.first_name or "Reader"
@@ -394,18 +284,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             
         if action == "admin_stats":
             subscribers = await database.get_all_subscribers()
-            stats_text = (
-                f"📊 *Admin Statistics*\n\n"
-                f"👥 Total Subscribers: {len(subscribers)}\n"
-                f"🕒 Server Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC"
-            )
-            keyboard = [
-                [
-                    InlineKeyboardButton("📢 Broadcast Now", callback_data="admin_broadcast"),
-                    InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")
-                ]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+            stats_text, reply_markup = get_stats_menu(len(subscribers))
             await edit_or_reply(text=stats_text, reply_markup=reply_markup)
             
         elif action == "admin_broadcast":
@@ -676,18 +555,7 @@ async def admin_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handle the /admin_stats command."""
     logger.info(f"[BOT] Admin {update.effective_user.id} invoked /admin_stats")
     subscribers = await database.get_all_subscribers()
-    stats_text = (
-        f"*[ SYSTEM STATUS ]*\n\n"
-        f"👥 *Total Subscribers:* {len(subscribers)}\n"
-        f"⏱️ *Server Time:* {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%Y-%m-%d %H:%M:%S')} IST"
-    )
-    keyboard = [
-        [
-            InlineKeyboardButton("📢 Broadcast Now", callback_data="admin_broadcast"),
-            InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    stats_text, reply_markup = get_stats_menu(len(subscribers))
     await update.message.reply_text(stats_text, reply_markup=reply_markup, parse_mode="Markdown")
 
 @admin_only
@@ -1078,7 +946,8 @@ def build_bot() -> Application:
     job_queue = app.job_queue
     ist_tz = pytz.timezone('Asia/Kolkata')
     broadcast_time = time(hour=10, minute=0, tzinfo=ist_tz)
-    job_queue.run_daily(scheduled_broadcast, broadcast_time)
+    # 3600s = 1 hr grace time. If bot was offline and wakes up at 4 PM, skip missed 10 AM run.
+    job_queue.run_daily(scheduled_broadcast, broadcast_time, job_kwargs={'misfire_grace_time': 3600})
     
     return app
 

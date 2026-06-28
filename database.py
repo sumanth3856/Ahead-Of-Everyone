@@ -157,11 +157,7 @@ async def execute_with_retry(query: str, *args, is_fetch: bool = False, is_fetch
                     return await conn.fetch(query, *args)
                 else:
                     return await conn.execute(query, *args)
-        except asyncio.TimeoutError as e:
-            last_err = e
-            logger.warning(f"Database acquire timeout on attempt {attempt + 1}/3: {e}")
-            await asyncio.sleep(1 * (attempt + 1))
-        except (asyncpg.exceptions.InterfaceError, asyncpg.exceptions.InternalClientError) as e:
+        except (asyncio.TimeoutError, asyncpg.exceptions.InterfaceError, asyncpg.exceptions.InternalClientError) as e:
             last_err = e
             logger.warning(f"Transient DB connection error on attempt {attempt + 1}/3: {e}")
             # Reset pool to force reconnection on next retry

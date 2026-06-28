@@ -199,15 +199,15 @@ You MUST output ONLY valid JSON matching this exact schema, with no markdown for
   "category": "String (Generate a 2-4 word topic category, e.g., 'FEATURE . AI', 'ALERT . CYBERSECURITY', 'SPORT . CRICKET', 'NEWS . POLICY')",
   "headline": "Cleaned, punchy version of the article title",
   "headline_highlight": "One single powerful word representing the headline",
-  "the_brief": "A 1-2 sentence executive summary of what happened.",
+  "the_brief": "A strictly 1-2 sentence executive summary. MAXIMUM 130 characters. Do not exceed this.",
   "core_breakdown": [
     {
       "tag": "String: Short, 1-3 word bold lead-in descriptor (e.g., 'The deal', 'The architecture', 'The pricing')",
       "detail": "String: The punchy factual details and metrics for this point (~150-250 characters)"
     }
   ],
-  "the_edge": "The critical take, market impact, or 'why this matters' (~350 chars).",
-  "deep_dive": "An insightful quote from the article or final piece of critical context (~300 chars)."
+  "the_edge": "The critical take, market impact, or 'why this matters'. MAXIMUM 220 characters. Keep it brief and punchy.",
+  "deep_dive": "An insightful quote from the article or final piece of critical context (~250 chars)."
 }
 Note: The 'core_breakdown' list MUST contain exactly 4 key objects covering the core facts of the story."""
 
@@ -257,6 +257,16 @@ def strip_html(html_str: str) -> str:
     text = HTML_STRIP_RE.sub(' ', html_str)
     return " ".join(text.split())
 
+def parse_rss_date(entry) -> Optional[datetime]:
+    try:
+        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+            return datetime.fromtimestamp(calendar.timegm(entry.published_parsed), timezone.utc)
+        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+            return datetime.fromtimestamp(calendar.timegm(entry.updated_parsed), timezone.utc)
+    except Exception as e:
+        logger.debug(f"Failed to parse RSS date: {e}")
+    return None
+
 async def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
     logger.info(f"[SCRAPER] Fetching RSS feed: {feed_url} with {lookback_hours}h lookback")
     items = []
@@ -272,11 +282,7 @@ async def fetch_rss_feed(feed_url: str, lookback_hours: int = 24) -> List[Dict]:
         
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         for entry in parsed.entries:
-            published = None
-            if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                published = datetime.fromtimestamp(calendar.timegm(entry.published_parsed), timezone.utc)
-            elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-                published = datetime.fromtimestamp(calendar.timegm(entry.updated_parsed), timezone.utc)
+            published = parse_rss_date(entry)
                 
             if published and published < cutoff_time:
                 continue
@@ -381,6 +387,40 @@ async def fetch_full_article_text(url: str) -> str:
         logger.warning(f"Fallback scrape also failed for {url}: {e}")
         return ""
 
+def is_empty_value(val) -> bool:
+    if val is None:
+        return True
+    s = str(val).strip()
+    # Checks for empty string, quotes, or whitespace
+    return not s or s in ('""', "''", '""""', "''''", '`""`', "`''`")
+
+def fallback_assign(structured_data, key, text_source, limit, default_msg):
+    if is_empty_value(structured_data.get(key)):
+        if text_source:
+            text = " ".join(text_source.split())
+            if len(text) > limit:
+                slice_limit = limit - 3
+                sub_text = text[:slice_limit]
+                last_space = sub_text.rfind(' ')
+                if last_space != -1:
+                    text = sub_text[:last_space].rstrip(".,;:!- ") + "..."
+                else:
+                    text = sub_text + "..."
+            structured_data[key] = text
+        else:
+            structured_data[key] = default_msg
+    else:
+        val_str = " ".join(str(structured_data[key]).strip().strip('\'"').split())
+        if len(val_str) > limit:
+            slice_limit = limit - 3
+            sub_text = val_str[:slice_limit]
+            last_space = sub_text.rfind(' ')
+            if last_space != -1:
+                val_str = sub_text[:last_space].rstrip(".,;:!- ") + "..."
+            else:
+                val_str = sub_text + "..."
+        structured_data[key] = val_str
+
 async def fetch_story_details(item: Dict) -> Optional[Dict]:
     logger.info(f"[SCRAPER] Starting AI Processing for: {item['title']}")
     metadata = item.get('metadata', None)
@@ -416,40 +456,6 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
     # Clean headline & highlight for fallbacks
     clean_headline = HEADLINE_CLEAN_RE.sub('', item['title']).strip()
     highlight = clean_headline.split()[0] if clean_headline else "NEWS"
-    
-    def fallback_assign(structured_data, key, text_source, limit, default_msg):
-        if is_empty_value(structured_data.get(key)):
-            if text_source:
-                text = " ".join(text_source.split())
-                if len(text) > limit:
-                    slice_limit = limit - 3
-                    sub_text = text[:slice_limit]
-                    last_space = sub_text.rfind(' ')
-                    if last_space != -1:
-                        text = sub_text[:last_space].rstrip(".,;:!- ") + "..."
-                    else:
-                        text = sub_text + "..."
-                structured_data[key] = text
-            else:
-                structured_data[key] = default_msg
-        else:
-            val_str = " ".join(str(structured_data[key]).strip().strip('\'"').split())
-            if len(val_str) > limit:
-                slice_limit = limit - 3
-                sub_text = val_str[:slice_limit]
-                last_space = sub_text.rfind(' ')
-                if last_space != -1:
-                    val_str = sub_text[:last_space].rstrip(".,;:!- ") + "..."
-                else:
-                    val_str = sub_text + "..."
-            structured_data[key] = val_str
-
-    def is_empty_value(val) -> bool:
-        if val is None:
-            return True
-        s = str(val).strip()
-        # Checks for empty string, quotes, or whitespace
-        return not s or s in ('""', "''", '""""', "''''", '`""`', "`''`")
 
     if not structured_data:
         logger.warning(f"Using fallback summary for '{item['title']}' due to AI failure.")
@@ -506,7 +512,15 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
             brief = snippet[:157] + "..."
         structured_data["the_brief"] = brief
     else:
-        structured_data["the_brief"] = str(structured_data["the_brief"]).strip().strip('\'"')
+        brief_text = str(structured_data["the_brief"]).strip().strip('\'"')
+        if len(brief_text) > 140:
+            sub = brief_text[:137]
+            last_space = sub.rfind(' ')
+            if last_space != -1:
+                brief_text = sub[:last_space].rstrip(".,;:!- ") + "..."
+            else:
+                brief_text = sub + "..."
+        structured_data["the_brief"] = brief_text
 
     # Core Breakdown fallback (Must be a list of exactly 4 objects with tag and detail keys)
     raw_core = structured_data.get("core_breakdown")
@@ -567,8 +581,7 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         leftover_text = full_text[len(brief) + len(core):].strip()
 
     # The Edge fallback
-    # The Edge fallback
-    fallback_assign(structured_data, "the_edge", leftover_text, 350, "A critical industry update to watch as developments unfold.")
+    fallback_assign(structured_data, "the_edge", leftover_text, 240, "A critical industry update to watch as developments unfold.")
 
     # Update leftover_text for Deep Dive
     edge_str = structured_data.get("the_edge", "").replace("...", "")
