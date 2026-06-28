@@ -1,11 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { motion, useMotionValue, useSpring, useTransform, useMotionTemplate } from "framer-motion";
+import { motion, useMotionValue, useSpring, useTransform, useMotionTemplate, HTMLMotionProps } from "framer-motion";
 
-interface SpatialCardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface SpatialCardProps extends HTMLMotionProps<"div"> {
   children: React.ReactNode;
-  className?: string;
   depth?: number;
 }
 
