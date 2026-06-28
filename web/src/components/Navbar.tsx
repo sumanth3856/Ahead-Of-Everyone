@@ -42,7 +42,7 @@ export default function Navbar({ isLoggedIn = false }: NavbarProps) {
           
           <Link href="/" className="flex items-center gap-3 group shrink-0">
             <div className="relative w-10 h-10 sm:w-12 sm:h-12 overflow-hidden rounded-lg group-hover:shadow-md transition-all duration-500 bg-surface">
-              <Image src="/logo.png" alt="AoE Logo" fill className="object-cover" />
+              <Image src="/logo.jpg" alt="AoE Logo" fill className="object-cover" />
             </div>
             <span className="font-bold text-lg sm:text-xl tracking-wider text-foreground group-hover:text-brand transition-colors whitespace-nowrap">
               AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors hidden sm:inline">EVERYONE</span>
