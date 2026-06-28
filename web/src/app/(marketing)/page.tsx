@@ -76,7 +76,7 @@ export default function Home() {
           variants={staggerContainer}
           initial="hidden"
           animate="show"
-          style={{ y: yText, opacity: opacityText, transform: "translateZ(100px)" }}
+          style={{ y: yText, opacity: opacityText, z: 100 }}
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center w-full"
         >
           <motion.div variants={fadeUp} className="inline-block mb-8 px-6 py-2 rounded-full border border-brand/30 bg-background/50 backdrop-blur-xl text-brand font-bold tracking-widest uppercase shadow-spatial">

@@ -10,6 +10,7 @@ interface SpatialCardProps extends HTMLMotionProps<"div"> {
 
 export function SpatialCard({ children, className = "", depth = 20, ...props }: SpatialCardProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const rectRef = useRef<DOMRect | null>(null);
   
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -28,8 +29,8 @@ export function SpatialCard({ children, className = "", depth = 20, ...props }: 
   const rotateY = useTransform(smoothX, [-0.5, 0.5], [-depth, depth]);
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    if (!ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
+    if (!ref.current || !rectRef.current) return;
+    const rect = rectRef.current;
     
     // Normalize coordinates from -0.5 to 0.5
     const width = rect.width;
@@ -49,8 +50,16 @@ export function SpatialCard({ children, className = "", depth = 20, ...props }: 
     mouseY.set(mouseYPos);
   }
 
+  function handleMouseEnter() {
+    setIsHovered(true);
+    if (ref.current) {
+      rectRef.current = ref.current.getBoundingClientRect();
+    }
+  }
+
   function handleMouseLeave() {
     setIsHovered(false);
+    rectRef.current = null;
     x.set(0);
     y.set(0);
   }
@@ -59,7 +68,7 @@ export function SpatialCard({ children, className = "", depth = 20, ...props }: 
     <motion.div
       ref={ref}
       onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       style={{
         rotateX,

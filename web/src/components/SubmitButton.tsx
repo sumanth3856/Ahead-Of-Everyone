@@ -4,6 +4,8 @@ import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
 import React from "react";
 
+import { MagneticButton } from "@/components/ui/MagneticButton";
+
 interface SubmitButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
   loadingText?: string | React.ReactNode;
@@ -13,7 +15,7 @@ export function SubmitButton({ children, loadingText, className, ...props }: Sub
   const { pending } = useFormStatus();
 
   return (
-    <button
+    <MagneticButton
       {...props}
       type="submit"
       disabled={pending || props.disabled}
@@ -26,6 +28,6 @@ export function SubmitButton({ children, loadingText, className, ...props }: Sub
       ) : (
         children
       )}
-    </button>
+    </MagneticButton>
   );
 }

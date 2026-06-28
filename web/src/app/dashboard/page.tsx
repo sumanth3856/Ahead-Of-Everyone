@@ -150,7 +150,7 @@ export default async function DashboardHome() {
                 </tr>
               )}
               {recentDigests.map((row, i) => (
-                <tr key={i} className="hover:bg-surface transition-colors group">
+                <tr key={i} className="hover:bg-surface transition-colors group stagger-row">
                   <td className="px-6 py-4 font-bold text-foreground group-hover:text-brand transition-colors capitalize">
                     {row.topic === "latest" ? "Daily Tech Briefing" : row.topic}
                   </td>

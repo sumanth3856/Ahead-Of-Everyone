@@ -75,3 +75,25 @@ body {
 @utility shadow-spatial {
   box-shadow: var(--shadow-spatial);
 }
+
+/* Staggered Row Animations */
+@keyframes cascadeFadeIn {
+  0% { opacity: 0; transform: translateY(20px); filter: blur(4px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.stagger-row {
+  opacity: 0;
+  animation: cascadeFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.stagger-row:nth-child(1) { animation-delay: 0.1s; }
+.stagger-row:nth-child(2) { animation-delay: 0.2s; }
+.stagger-row:nth-child(3) { animation-delay: 0.3s; }
+.stagger-row:nth-child(4) { animation-delay: 0.4s; }
+.stagger-row:nth-child(5) { animation-delay: 0.5s; }
+.stagger-row:nth-child(6) { animation-delay: 0.6s; }
+.stagger-row:nth-child(7) { animation-delay: 0.7s; }
+.stagger-row:nth-child(8) { animation-delay: 0.8s; }
+.stagger-row:nth-child(9) { animation-delay: 0.9s; }
+.stagger-row:nth-child(10) { animation-delay: 1.0s; }
