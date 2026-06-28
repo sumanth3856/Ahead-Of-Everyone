@@ -1,6 +1,7 @@
 import { ShieldCheck, Activity, Send, Clock, Download, FileText, AlertCircle } from "lucide-react";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import LinkTelegramClient from "@/components/dashboard/LinkTelegramClient";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 
