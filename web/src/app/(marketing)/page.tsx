@@ -38,7 +38,7 @@ export default function Home() {
     <div ref={containerRef} className="flex flex-col items-center overflow-hidden bg-background">
       
       {/* Immersive 3D Hero Section */}
-      <section className="relative w-full h-[100svh] flex items-center justify-center perspective-[1200px] transform-style-3d">
+      <section className="relative w-full min-h-[100svh] pt-24 pb-12 flex items-center justify-center perspective-[1200px] transform-style-3d">
         
         {/* Parallax Background Orb */}
         <motion.div 
