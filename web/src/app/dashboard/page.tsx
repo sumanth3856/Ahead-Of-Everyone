@@ -77,7 +77,7 @@ export default async function DashboardHome() {
               <div className="p-3 rounded-lg bg-brand/5 border border-brand/10">
                 <ShieldCheck className="h-6 w-6 text-brand" />
               </div>
-              <h2 className="font-bold tracking-wide uppercase text-sm text-foreground">Account Status</h2>
+              <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Account Status</h2>
             </div>
             
             <div className="space-y-4">
@@ -115,7 +115,7 @@ export default async function DashboardHome() {
               <FileText className="h-5 w-5 text-brand" />
               <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Digests Available</h3>
             </div>
-            <p className="text-4xl font-extrabold text-foreground">{totalDigests}</p>
+            <p className="text-3xl font-extrabold text-foreground">{totalDigests}</p>
             <p className="text-xs text-brand font-semibold mt-2">Latest intelligence reports</p>
           </SpatialCard>
         )}
@@ -142,7 +142,7 @@ export default async function DashboardHome() {
       {/* Recent Digests Table */}
       <SpatialCard depth={2} className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">
         <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-surface">
-          <h2 className="font-bold tracking-wide uppercase text-sm text-foreground">Recent Transmissions</h2>
+          <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Recent Transmissions</h2>
           <span className="text-xs text-muted font-bold uppercase tracking-widest">Live Feed</span>
         </div>
         <div className="overflow-x-auto">

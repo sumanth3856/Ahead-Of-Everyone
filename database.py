@@ -133,6 +133,10 @@ async def init_db():
                 )
             """)
             try:
+                await conn.execute("ALTER TABLE admin_commands ADD COLUMN IF NOT EXISTS error_msg TEXT;")
+            except Exception as e:
+                logger.warning(f"Could not add error_msg to admin_commands: {e}")
+            try:
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS supabase_path TEXT;")
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
                 # Verify that the column was successfully added/exists
@@ -504,12 +508,20 @@ async def fetch_pending_admin_commands() -> list:
 async def update_admin_command_status(cmd_id: int, status: str, error_msg: str = None) -> bool:
     """Updates the status and optional error message of an admin command."""
     try:
-        await execute_with_retry(
-            "UPDATE admin_commands SET status = $1, error_msg = $2 WHERE id = $3",
-            status,
-            error_msg,
-            cmd_id
-        )
+        try:
+            await execute_with_retry(
+                "UPDATE admin_commands SET status = $1, error_msg = $2 WHERE id = $3",
+                status,
+                error_msg,
+                cmd_id
+            )
+        except Exception:
+            # Fallback if error_msg column really doesn't exist
+            await execute_with_retry(
+                "UPDATE admin_commands SET status = $1 WHERE id = $2",
+                status,
+                cmd_id
+            )
         return True
     except Exception as e:
         logger.error(f"Error updating admin command status: {e}")

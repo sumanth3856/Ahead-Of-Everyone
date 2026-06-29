@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
 import { AlertTriangle, RefreshCcw, Home } from "lucide-react";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 
@@ -16,6 +15,18 @@ export default function ErrorPage({
     // Log the error to an error reporting service
     console.error(error);
   }, [error]);
+
+  const handleRetry = () => {
+    try {
+      reset();
+    } catch {
+      window.location.reload();
+    }
+  };
+
+  const handleGoHome = () => {
+    window.location.href = "/";
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -43,20 +54,20 @@ export default function ErrorPage({
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <button
-            onClick={() => reset()}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-surface border border-border-subtle text-foreground font-bold tracking-wide hover:bg-surface-hover transition-colors"
+            onClick={handleRetry}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-surface border border-border-subtle text-foreground font-bold tracking-wide hover:bg-surface-hover transition-colors cursor-pointer"
           >
             <RefreshCcw className="h-5 w-5" />
             Try Again
           </button>
           
-          <Link 
-            href="/dashboard"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-bold tracking-wide hover:opacity-90 transition-opacity"
+          <button 
+            onClick={handleGoHome}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-bold tracking-wide hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Home className="h-5 w-5" />
             Go Home
-          </Link>
+          </button>
         </div>
       </SpatialCard>
     </div>

@@ -13,6 +13,11 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "Ahead Of Everyone | Daily Tech Digest",
   description: "Five minutes. Then you are ahead of everyone.",
+  icons: {
+    icon: "/logo.jpg",
+    shortcut: "/logo.jpg",
+    apple: "/logo.jpg",
+  },
 };
 
 export default function RootLayout({

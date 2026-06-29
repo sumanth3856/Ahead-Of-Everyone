@@ -7,6 +7,7 @@ import { ArrowRight, Zap, Database, Cpu, Shield, Globe } from "lucide-react";
 import { motion, Variants } from "framer-motion";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 import { MagneticButton } from "@/components/ui/MagneticButton";
+import { LiveTerminal } from "@/components/ui/LiveTerminal";
 
 export default function Home() {
   const router = useRouter();
@@ -87,7 +88,7 @@ export default function Home() {
                 <motion.span 
                   key={index} 
                   variants={textRevealItem} 
-                  whileHover={{ y: -20, scale: 1.1, color: "#8B5CF6" }}
+                  whileHover={{ y: -20, scale: 1.1, color: "var(--color-brand)" }}
                   transition={{ type: "spring", stiffness: 300, damping: 10 }}
                   className="inline-block transition-colors duration-200"
                 >
@@ -101,7 +102,7 @@ export default function Home() {
                 <motion.span 
                   key={index} 
                   variants={textRevealItem} 
-                  whileHover={{ y: -20, scale: 1.1, color: "#a78bfa" }}
+                  whileHover={{ y: -20, scale: 1.1, color: "var(--color-brand-light)" }}
                   transition={{ type: "spring", stiffness: 300, damping: 10 }}
                   className="inline-block text-brand transition-colors duration-200"
                 >
@@ -126,6 +127,10 @@ export default function Home() {
               <span className="relative z-10 group-hover:text-white transition-colors duration-300">Access Protocols</span>
               <ArrowRight size={20} className="relative z-10 group-hover:text-white group-hover:translate-x-2 transition-all duration-300" />
             </MagneticButton>
+          </motion.div>
+
+          <motion.div variants={fadeUp}>
+            <LiveTerminal />
           </motion.div>
         </motion.div>
       </section>

@@ -1,10 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { TerminalSquare, ShieldAlert } from "lucide-react";
+import { TerminalSquare, ShieldAlert, Home } from "lucide-react";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 
 export default function NotFound() {
+  const handleGoHome = () => {
+    window.location.href = "/";
+  };
+
+  const handleGoDashboard = () => {
+    window.location.href = "/dashboard";
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative overflow-hidden">
       {/* Background glow effects */}
@@ -29,13 +36,23 @@ export default function NotFound() {
           The requested intel could not be located in our systems. The pipeline might have been rerouted or the link is classified.
         </p>
         
-        <Link 
-          href="/dashboard"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-bold tracking-wide hover:opacity-90 transition-opacity"
-        >
-          <TerminalSquare className="h-5 w-5" />
-          Return to Dashboard
-        </Link>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <button
+            onClick={handleGoHome}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-surface border border-border-subtle text-foreground font-bold tracking-wide hover:bg-surface-hover transition-colors cursor-pointer"
+          >
+            <Home className="h-5 w-5" />
+            Go Home
+          </button>
+          
+          <button
+            onClick={handleGoDashboard}
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-brand text-white font-bold tracking-wide hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            <TerminalSquare className="h-5 w-5" />
+            Return to Dashboard
+          </button>
+        </div>
       </SpatialCard>
     </div>
   );

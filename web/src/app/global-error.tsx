@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { AlertTriangle, RefreshCcw } from "lucide-react";
+import { AlertTriangle, RefreshCcw, Home } from "lucide-react";
 
 // Global error must define its own HTML and Body tags
 export default function GlobalError({
@@ -15,6 +15,18 @@ export default function GlobalError({
     // Log the error to an error reporting service
     console.error(error);
   }, [error]);
+
+  const handleRetry = () => {
+    try {
+      reset();
+    } catch {
+      window.location.reload();
+    }
+  };
+
+  const handleGoHome = () => {
+    window.location.href = "/";
+  };
 
   return (
     <html lang="en" className="dark">
@@ -35,17 +47,27 @@ export default function GlobalError({
               CRITICAL FAILURE
             </h1>
             
-            <p className="text-[#4a5568] text-sm md:text-base mb-8">
+            <p className="text-[#a0aec0] text-sm md:text-base mb-8">
               A catastrophic layout error occurred. Our systems are attempting to recover.
             </p>
             
-            <button
-              onClick={() => reset()}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#22c55e] text-white font-bold tracking-wide hover:opacity-90 transition-opacity"
-            >
-              <RefreshCcw className="h-5 w-5" />
-              Attempt Recovery
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={handleRetry}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#2d3748] border border-[#4a5568]/30 text-white font-bold tracking-wide hover:bg-[#4a5568] transition-colors cursor-pointer"
+              >
+                <RefreshCcw className="h-5 w-5" />
+                Attempt Recovery
+              </button>
+              
+              <button
+                onClick={handleGoHome}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#22c55e] text-white font-bold tracking-wide hover:opacity-90 transition-opacity cursor-pointer"
+              >
+                <Home className="h-5 w-5" />
+                Go Home
+              </button>
+            </div>
           </div>
         </div>
       </body>

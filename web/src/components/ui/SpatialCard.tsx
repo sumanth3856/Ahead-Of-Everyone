@@ -8,7 +8,7 @@ interface SpatialCardProps extends HTMLMotionProps<"div"> {
   depth?: number;
 }
 
-export function SpatialCard({ children, className = "", depth = 20, ...props }: SpatialCardProps) {
+export function SpatialCard({ children, className = "", depth = 10, ...props }: SpatialCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const rectRef = useRef<DOMRect | null>(null);
   
@@ -73,7 +73,6 @@ export function SpatialCard({ children, className = "", depth = 20, ...props }: 
       style={{
         rotateX,
         rotateY,
-        transformStyle: "preserve-3d",
       }}
       className={`glass relative group transition-shadow duration-500 ${
         isHovered ? "shadow-spatial" : "shadow-sm"
@@ -98,12 +97,10 @@ export function SpatialCard({ children, className = "", depth = 20, ...props }: 
       {/* Noise Texture Overlay */}
       <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none mix-blend-overlay noise-bg rounded-3xl" />
       
-      <div 
-        className="relative w-full h-full"
-        style={{ transform: "translateZ(30px)" }} // Pop the content out slightly from the glass
-      >
+      <div className="relative w-full h-full">
         {children}
       </div>
     </motion.div>
   );
 }
+
