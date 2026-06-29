@@ -4,6 +4,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import LinkTelegramClient from "@/components/dashboard/LinkTelegramClient";
 import { SpatialCard } from "@/components/ui/SpatialCard";
+import { RadarChartWidget } from "@/components/ui/RadarChartWidget";
+import { StreakCalendarWidget } from "@/components/ui/StreakCalendarWidget";
 
 export default async function DashboardHome() {
   const supabase = await createClient();
@@ -14,8 +16,11 @@ export default async function DashboardHome() {
     redirect("/login");
   }
 
-  const fullName = user.user_metadata?.full_name || "Agent";
-  const firstName = fullName.split(' ')[0];
+  let fullName = user.user_metadata?.full_name?.trim();
+  if (!fullName || fullName === "-") {
+    fullName = "Agent";
+  }
+  const firstName = fullName.split(' ')[0] || "Agent";
 
   // Fetch user profile to check telegram linkage
   const { data: profile } = await supabase
@@ -27,7 +32,14 @@ export default async function DashboardHome() {
   const isTelegramLinked = !!profile?.telegram_chat_id;
 
   // 2. Fetch live digests for THIS USER (and global broadcasts)
-  const { data: digests, error: dbError } = await supabase
+  // Use admin client to bypass RLS in Server Component context safely
+  const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
+  const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
     .select("topic, generated_date_ist, supabase_path")
     .or(`user_id.eq.${user.id},user_id.is.null`)
@@ -83,7 +95,12 @@ export default async function DashboardHome() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted text-sm font-medium">Access</span>
-                <span className="text-foreground text-sm font-semibold">Premium</span>
+                <span className="text-foreground text-sm font-semibold">{isTelegramLinked ? "Premium" : "Standard"}</span>
+              </div>
+              <div className="pt-4 mt-4 border-t border-border-subtle flex justify-end">
+                <Link href="/dashboard/settings" className="text-xs font-bold text-brand uppercase tracking-wider hover:text-brand-light transition-colors">
+                  Manage Profile &rarr;
+                </Link>
               </div>
             </div>
           </div>
@@ -115,16 +132,12 @@ export default async function DashboardHome() {
           </SpatialCard>
         </div>
 
-
-      {dbError && (
-        <div className="p-4 rounded-xl border flex items-start gap-3 text-sm bg-red-500/10 border-red-500/20 text-red-400">
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-bold">Database Access Error</p>
-            <p className="opacity-80">Row Level Security (RLS) might be blocking access to the digests_cache table. Please check your Supabase policies.</p>
-          </div>
+        {/* Visual Metrics Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <RadarChartWidget />
+          <StreakCalendarWidget />
         </div>
-      )}
+
 
       {/* Recent Digests Table */}
       <SpatialCard depth={2} className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">

@@ -33,3 +33,37 @@ export async function generateTelegramLinkCode() {
   revalidatePath('/dashboard');
   return code;
 }
+
+export async function insertAdminCommand(command: string, payload: any = {}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Unauthorized");
+
+  // Verify admin role
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.role !== 'admin') {
+    throw new Error("Admin access required.");
+  }
+
+  const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
+  const supabaseAdmin = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { error } = await supabaseAdmin
+    .from('admin_commands')
+    .insert([{ command, payload, status: 'pending' }]);
+
+  if (error) {
+    console.error("Failed to insert admin command:", error);
+    throw new Error(error.message);
+  }
+
+  return { success: true };
+}

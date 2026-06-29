@@ -1,14 +1,31 @@
 import Sidebar from "@/components/dashboard/Sidebar";
 import Header from "@/components/dashboard/Header";
+import { createClient } from "@/utils/supabase/server";
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  let isAdmin = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    
+    if (profile?.role === 'admin') {
+      isAdmin = true;
+    }
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
+      <Sidebar isAdmin={isAdmin} />
       <div className="flex-1 flex flex-col overflow-hidden relative z-10">
         <Header />
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">

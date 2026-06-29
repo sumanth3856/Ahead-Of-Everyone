@@ -654,6 +654,26 @@ async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         await update.message.reply_text("❌ *Invalid or expired code.* Please generate a new link code from the dashboard and try again.", parse_mode="Markdown")
 
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle the /profile command to display user details."""
+    chat_id = update.message.chat_id
+    logger.info(f"[BOT] User {chat_id} invoked /profile")
+    
+    profile = await database.get_user_profile(chat_id)
+    if profile:
+        text = (
+            "👤 *Your Profile*\n"
+            "━━━━━━━━━━━━━━━━━\n"
+            f"**Name:** {profile['full_name']}\n"
+            f"**Email:** {profile['email']}\n"
+            f"**Tier:** {profile['tier']} 🌟\n"
+            f"**Chat ID:** `{profile['chat_id']}`\n"
+            "━━━━━━━━━━━━━━━━━"
+        )
+        await update.message.reply_text(text, parse_mode="Markdown")
+    else:
+        await update.message.reply_text("⚠️ You don't have a profile linked to this Telegram account yet. Please use `/link <code>` to link your account.", parse_mode="Markdown")
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""
     logger.info(f"[BOT] User {update.effective_user.id} invoked /help")
@@ -862,6 +882,8 @@ async def post_init(app: Application) -> None:
         global_commands = [
             BotCommand("start", "🚀 Greet & show menu"),
             BotCommand("news", "📰 Fetch news (e.g., /news AI)"),
+            BotCommand("link", "🔗 Manage your links"),
+            BotCommand("profile", "👤 View your profile"),
             BotCommand("help", "📖 Show help manual"),
             BotCommand("cancel", "🛑 Cancel active generation")
         ]
@@ -879,6 +901,8 @@ async def post_init(app: Application) -> None:
                 admin_commands = [
                     BotCommand("start", "🚀 Greet & show menu"),
                     BotCommand("news", "📰 Fetch news (e.g., /news AI)"),
+                    BotCommand("link", "🔗 Manage your links"),
+                    BotCommand("profile", "👤 View your profile"),
                     BotCommand("status", "🖥️ Check system status"),
                     BotCommand("help", "📖 Show help menu"),
                     BotCommand("stats", "📊 View subscriber stats"),
@@ -928,6 +952,7 @@ def build_bot() -> Application:
     app.add_handler(CommandHandler("status", safe_handler(status_command)))
     app.add_handler(CommandHandler("help", safe_handler(help_command)))
     app.add_handler(CommandHandler("link", safe_handler(link_command)))
+    app.add_handler(CommandHandler("profile", safe_handler(profile_command)))
     app.add_handler(CommandHandler("broadcast", safe_handler(admin_broadcast_command)))
     app.add_handler(CommandHandler("stats", safe_handler(admin_stats_command)))
     app.add_handler(CommandHandler("admin_stats", safe_handler(admin_stats_command)))
