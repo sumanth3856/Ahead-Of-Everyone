@@ -493,7 +493,8 @@ async def fetch_pending_admin_commands() -> list:
     """Fetches all pending admin commands from the database."""
     try:
         rows = await execute_with_retry(
-            "SELECT id, command, payload FROM admin_commands WHERE status = 'pending' ORDER BY created_at ASC"
+            "SELECT id, command, payload FROM admin_commands WHERE status = 'pending' ORDER BY created_at ASC",
+            is_fetch=True
         )
         return [dict(r) for r in rows] if rows else []
     except Exception as e:

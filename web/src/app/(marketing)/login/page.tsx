@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Mail, Lock, AlertCircle } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { toast } from "sonner";
@@ -14,7 +14,7 @@ function LoginFormContent() {
   const searchParams = useSearchParams();
   const message = searchParams.get("message");
   
-  const fadeUp = {
+  const fadeUp: Variants = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: ("easeOut" as any) } },
   };

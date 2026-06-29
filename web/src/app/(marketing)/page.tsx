@@ -4,14 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Zap, Database, Cpu, Shield, Globe } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 import { MagneticButton } from "@/components/ui/MagneticButton";
 
 export default function Home() {
   const router = useRouter();
 
-  const staggerContainer = {
+  const staggerContainer: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -21,12 +21,12 @@ export default function Home() {
     },
   };
 
-  const fadeUp = {
+  const fadeUp: Variants = {
     hidden: { opacity: 0, y: 50 },
     show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" as any } },
   };
 
-  const textRevealContainer = {
+  const textRevealContainer: Variants = {
     hidden: { opacity: 1 },
     show: {
       opacity: 1,
@@ -37,7 +37,7 @@ export default function Home() {
     }
   };
 
-  const textRevealItem = {
+  const textRevealItem: Variants = {
     hidden: { y: "120%", opacity: 0 },
     show: { 
       y: "0%", 
