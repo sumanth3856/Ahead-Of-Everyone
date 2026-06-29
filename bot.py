@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import logging
 from datetime import time, datetime
@@ -869,6 +870,59 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
             except Exception as e:
                 logger.error(f"Failed to clean up broadcast PDF {pdf_filename}: {e}")
 
+async def poll_admin_commands(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Poll the database for pending admin commands and execute them."""
+    try:
+        commands = await database.fetch_pending_admin_commands()
+        for cmd in commands:
+            cmd_id = cmd['id']
+            command_type = cmd['command']
+            payload = cmd['payload']
+            
+            logger.info(f"[ADMIN WORKER] Processing command {cmd_id}: {command_type}")
+            
+            try:
+                if command_type == "broadcast_digests":
+                    await database.update_admin_command_status(cmd_id, "completed")
+                    # We pass a simple noop progress callback since this runs in the background
+                    def noop_progress(*args, **kwargs): pass
+                    await scheduled_broadcast(context, force_fresh=True, progress_callback=noop_progress)
+                    
+                elif command_type == "update_telegram_token":
+                    new_token = payload.get("new_token")
+                    if new_token:
+                        env_path = ".env"
+                        if os.path.exists(env_path):
+                            with open(env_path, "r") as f:
+                                lines = f.readlines()
+                            
+                            token_replaced = False
+                            with open(env_path, "w") as f:
+                                for line in lines:
+                                    if line.startswith("TELEGRAM_BOT_TOKEN="):
+                                        f.write(f"TELEGRAM_BOT_TOKEN={new_token}\n")
+                                        token_replaced = True
+                                    else:
+                                        f.write(line)
+                                if not token_replaced:
+                                    f.write(f"TELEGRAM_BOT_TOKEN={new_token}\n")
+                        else:
+                            with open(env_path, "w") as f:
+                                f.write(f"TELEGRAM_BOT_TOKEN={new_token}\n")
+
+                        await database.update_admin_command_status(cmd_id, "completed")
+                        logger.info("Bot token updated. Initiating self-restart via os.execv...")
+                        os.execv(sys.executable, ['python'] + sys.argv)
+                    else:
+                        await database.update_admin_command_status(cmd_id, "failed", "No new_token provided")
+                else:
+                    await database.update_admin_command_status(cmd_id, "failed", f"Unknown command: {command_type}")
+            except Exception as e:
+                logger.error(f"[ADMIN WORKER] Error executing command {cmd_id}: {e}")
+                await database.update_admin_command_status(cmd_id, "failed", str(e))
+    except Exception as e:
+        logger.error(f"[ADMIN WORKER] Polling error: {e}")
+
 async def post_init(app: Application) -> None:
     """Initialize the database during bot startup."""
     await database.init_db()
@@ -973,6 +1027,9 @@ def build_bot() -> Application:
     broadcast_time = time(hour=10, minute=0, tzinfo=ist_tz)
     # 3600s = 1 hr grace time. If bot was offline and wakes up at 4 PM, skip missed 10 AM run.
     job_queue.run_daily(scheduled_broadcast, broadcast_time, job_kwargs={'misfire_grace_time': 3600})
+    
+    # Start polling for admin commands every 5 seconds
+    job_queue.run_repeating(poll_admin_commands, interval=5, first=5)
     
     return app
 

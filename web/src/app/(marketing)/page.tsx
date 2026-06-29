@@ -45,29 +45,11 @@ export default function Home() {
           className="absolute inset-0 w-full h-full -z-20 pointer-events-none flex items-center justify-center"
           style={{ y: yBg }}
         >
-           <div className="relative w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] transform-style-3d" style={{ transform: "translateZ(-150px)" }}>
-             {/* Orbital Rings */}
-             <motion.div 
-               animate={{ rotateX: 360, rotateY: 180, rotateZ: 360 }}
-               transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
-               className="absolute inset-0 rounded-full border-[1px] border-brand/20 shadow-[inset_0_0_60px_rgba(139,92,246,0.1)]"
-             />
-             <motion.div 
-               animate={{ rotateX: -360, rotateY: 360, rotateZ: -180 }}
-               transition={{ duration: 40, repeat: Infinity, ease: "linear" }}
-               className="absolute inset-4 rounded-full border-[1px] border-brand-light/20"
-             />
-             {/* Glowing Core */}
-             <motion.div 
-                animate={{ scale: [0.8, 1.2, 0.8], opacity: [0.3, 0.7, 0.3] }}
-                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute top-1/4 left-1/4 right-1/4 bottom-1/4 rounded-full bg-brand blur-[80px]"
-             />
-             <motion.div 
-                animate={{ scale: [1, 1.5, 1], opacity: [0.1, 0.4, 0.1] }}
-                transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-                className="absolute top-1/4 left-1/4 right-1/4 bottom-1/4 rounded-full bg-foreground blur-[100px]"
-             />
+           <div className="absolute inset-0 w-full h-full transform-style-3d overflow-hidden">
+             {/* Gaussian Mesh Gradient Blur */}
+             <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-[100%] bg-purple-600/30 blur-[120px] mix-blend-normal" />
+             <div className="absolute top-[10%] -right-[10%] w-[60%] h-[60%] rounded-[100%] bg-indigo-500/20 blur-[130px] mix-blend-normal" />
+             <div className="absolute -bottom-[20%] left-[20%] w-[50%] h-[60%] rounded-[100%] bg-brand/25 blur-[140px] mix-blend-normal" />
            </div>
         </motion.div>
 

@@ -7,7 +7,9 @@ export default function Header() {
       <div className="flex items-center gap-4 w-full md:w-auto">
         {/* Mobile Logo */}
         <Link href="/" className="md:hidden flex items-center gap-2 group mr-2">
-          <TerminalSquare className="text-brand h-6 w-6 group-hover:opacity-80 transition-colors" />
+          <div className="relative w-10 h-10 flex-shrink-0 rounded-md overflow-hidden group-hover:opacity-80 transition-opacity">
+            <img src="/logo.jpg" alt="Logo" className="w-full h-full object-contain" />
+          </div>
           <span className="font-bold tracking-widest text-foreground group-hover:text-brand transition-colors text-xs sm:text-sm">
             AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors">EVERYONE</span>
           </span>

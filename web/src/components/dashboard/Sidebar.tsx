@@ -45,8 +45,10 @@ export default function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
         }`}
       >
         <div className="h-20 flex items-center justify-between px-6 border-b border-border-subtle bg-surface/50">
-          <Link href="/" className="flex items-center gap-2 group">
-            <TerminalSquare className="text-brand h-6 w-6 group-hover:opacity-80 transition-colors" />
+          <Link href="/" className="flex items-center gap-3 group">
+            <div className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden group-hover:opacity-80 transition-opacity">
+              <img src="/logo.jpg" alt="Logo" className="w-full h-full object-contain" />
+            </div>
             <span className="font-bold tracking-widest text-foreground group-hover:text-brand transition-colors text-sm">
               AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors">EVERYONE</span>
             </span>

@@ -111,6 +111,16 @@ async def init_db():
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS admin_commands (
+                    id SERIAL PRIMARY KEY,
+                    command TEXT NOT NULL,
+                    payload JSONB DEFAULT '{}'::jsonb,
+                    status TEXT DEFAULT 'pending',
+                    error_msg TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             try:
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS supabase_path TEXT;")
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
