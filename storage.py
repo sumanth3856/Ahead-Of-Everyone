@@ -4,6 +4,9 @@ import logging
 from database import get_http_session
 import datetime
 import urllib.parse
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
