@@ -276,6 +276,50 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         welcome_text, reply_markup = get_main_menu(first_name, is_subscribed)
         await edit_or_reply(text=welcome_text, reply_markup=reply_markup)
         
+    elif action == "profile":
+        profile = await database.get_user_profile(chat_id)
+        if profile:
+            text = (
+                "👤 *Your Profile*\n"
+                "━━━━━━━━━━━━━━━━━\n"
+                f"**Name:** {profile['full_name']}\n"
+                f"**Email:** {profile['email']}\n"
+                f"**Tier:** {profile['tier']} 🌟\n"
+                f"**Chat ID:** `{profile['chat_id']}`\n"
+                "━━━━━━━━━━━━━━━━━"
+            )
+            keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+        else:
+            text = "⚠️ You haven't linked your account yet.\n\nVisit the dashboard to get your link code, then reply with `/link <code>`."
+            keyboard = [
+                [InlineKeyboardButton("🔗 Open Web Dashboard", url="https://ahead-of-everyone.vercel.app/")],
+                [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+            ]
+        await edit_or_reply(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+        
+    elif action == "help":
+        user_id = str(query.from_user.id)
+        admin_id = os.getenv("ADMIN_ID", "6038057345")
+        is_admin = user_id == admin_id
+        
+        help_text = (
+            f"*[ HELP & COMMANDS ]*\n"
+            f"Here is what I can do for you:\n\n"
+            f"⚡ `/start` » Open the main menu\n"
+            f"🌐 `/news <topic>` » Search for news on a specific topic\n"
+            f"🔗 `/link <code>` » Link your account to the Dashboard\n"
+            f"📖 `/help` » Read this help guide\n\n"
+        )
+        if is_admin:
+            help_text += (
+                f"⚙️ *Admin Commands:*\n"
+                f"• `/status` » Check if the system is running well\n"
+                f"• `/stats` » View total number of subscribers\n"
+                f"• `/broadcast` » Send today's newsletter to everyone\n\n"
+            )
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+        await edit_or_reply(text=help_text, reply_markup=InlineKeyboardMarkup(keyboard))
+        
     elif action in ["admin_stats", "admin_broadcast"]:
         user_id = str(query.from_user.id)
         admin_id = os.getenv("ADMIN_ID", "6038057345")
@@ -547,7 +591,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             return
             
     is_subscribed = await database.is_subscriber(chat_id)
-    loading_msg = await update.message.reply_text(f"🚀 *IGNITING ENGINES* | Dispatching AI agents to hunt down the best stories about *{query}*... 🕵️‍♂️✨", parse_mode="Markdown")
+    loading_msg = await update.message.reply_text(f"⏳ *Preparing your intelligence briefing on {query}...*", parse_mode="Markdown")
     
     await enqueue_generation(chat_id, query, loading_msg, context.application, is_subscribed)
 
@@ -579,7 +623,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
         if mark_done:
             progress_state["done_phases"].add(mark_done)
             
-    loading_msg = await update.message.reply_text("🚀 *IGNITING ENGINES* | Firing up the AI clusters to forge today's intelligence briefing! 🧠⚡", parse_mode="Markdown")
+    loading_msg = await update.message.reply_text("⏳ *Starting the global broadcast generation...*", parse_mode="Markdown")
     ticker_task = safe_create_task(update_loading_message(loading_msg, context, progress_state))
     try:
         await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
@@ -600,7 +644,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
             pass
             
     if context.bot_data.get("broadcast_cancelled", False):
-        await update.message.reply_text("🛑 *BROADCAST ABORTED*", parse_mode="Markdown")
+        await update.message.reply_text("🛑 *Broadcast generation cancelled.*", parse_mode="Markdown")
         return
         
     keyboard = [
@@ -610,7 +654,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🎉 *BOOM! DELIVERED* | The intelligence briefing has successfully landed in everyone's inbox! 🚀📬", reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text("✅ *Delivered!* The intelligence briefing has successfully landed in everyone's inbox. 📬", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Cancel the current running global broadcast or individual user generation."""
@@ -626,17 +670,17 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # 1. Admin trying to cancel global broadcast
     if is_admin and context.bot_data.get("broadcast_in_progress", False):
         context.bot_data["broadcast_cancelled"] = True
-        await update.message.reply_text("🛑 *EMERGENCY BRAKES PULLED* | Halting the active broadcast pipeline immediately... 🚄💥")
+        await update.message.reply_text("🛑 *Broadcast generation cancelled.*")
         return
         
     # 2. Check if this specific user has an active generation running
     active_gens = context.bot_data.get("active_user_generations", {})
     if chat_id in active_gens:
         active_gens[chat_id] = True
-        await update.message.reply_text("🛑 *EMERGENCY BRAKES PULLED* | Halting your active pipeline immediately... 🚄💥")
+        await update.message.reply_text("🛑 *Generation cancelled.*")
         return
         
-    await update.message.reply_text("ℹ️ *All quiet on the western front!* No active generation is currently running for you right now. ☕")
+    await update.message.reply_text("ℹ️ No active generation is running for you right now.")
 
 async def link_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /link command to link a Telegram account to a web dashboard."""
@@ -673,7 +717,8 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         await update.message.reply_text(text, parse_mode="Markdown")
     else:
-        await update.message.reply_text("⚠️ You don't have a profile linked to this Telegram account yet. Please use `/link <code>` to link your account.", parse_mode="Markdown")
+        keyboard = [[InlineKeyboardButton("🔗 Open Web Dashboard", url="https://ahead-of-everyone.vercel.app/")]]
+        await update.message.reply_text("⚠️ You haven't linked your account yet.\n\nVisit the dashboard to get your link code, then reply with `/link <code>`.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /help command with context-specific inline keyboard."""

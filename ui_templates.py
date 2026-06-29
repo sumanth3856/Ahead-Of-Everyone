@@ -20,6 +20,10 @@ def get_main_menu(first_name: str, is_subscribed: bool = False):
         [
             InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest"),
             InlineKeyboardButton("ℹ️ About This Bot", callback_data="about")
+        ],
+        [
+            InlineKeyboardButton("👤 My Profile", callback_data="profile"),
+            InlineKeyboardButton("📖 Help & Commands", callback_data="help")
         ]
     ]
     if is_subscribed:
@@ -62,17 +66,14 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
     topic_str = f" about *{topic}*" if topic else ""
     chat_id = message.chat_id
     
-    # Animated emojis that cycle on each update to show the bot is alive
-    ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️", "🤖", "📡", "💡"]
+    # Refined newsletter progress facts
+    ticker_emojis = ["🔄", "⏳", "✨", "📊", "🔍", "⚡", "📡", "💡"]
     fun_facts = [
-        "Did you know? The first computer bug was an actual moth found in 1947. 🐛",
-        "Hang tight! Our 120-Billion parameter AI is reading the news faster than a caffeinated squirrel. 🐿️☕",
-        "Fun fact: 90% of the world's data was generated in the last two years alone! 📈",
-        "Just a moment... The AI is doing some heavy mental lifting. 🏋️‍♂️🤖",
-        "Did you know? The Apollo 11 computer had less memory than a modern smart bulb. 💡🚀",
-        "Almost there! Compiling a Pulitzer-level intelligence briefing just for you. 📰✨",
-        "Fun fact: The first domain ever registered was Symbolics.com in 1985. 🌐",
-        "Wait for it... Our digital journalists are putting on the finishing touches! 🧑‍💻✍️"
+        "Scanning hundreds of sources for high-signal updates... 🔍",
+        "Our AI models are distilling long-form articles into concise summaries. 📊",
+        "Curating the most impactful insights for your personalized digest. 💡",
+        "Formatting your intelligence briefing into a sleek, readable layout. ✨",
+        "Just a moment... your daily newsletter is almost ready to send. 📡"
     ]
     idx = 0
     
@@ -94,15 +95,15 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
             
             # Phase statuses synchronized with actual pipeline progression
             p1_stat = "✅ Sourced" if "Finding Stories" in done_phases else (f"{tick_emoji} Scouting..." if phase == "Finding Stories" else "⏳ Waiting")
-            p2_stat = "✅ Synthesized" if "Writing Summaries" in done_phases else (f"{tick_emoji} Deep Thinking..." if phase == "Writing Summaries" else "⏳ Waiting")
-            p3_stat = "✅ Crafted" if "Creating PDF" in done_phases else (f"{tick_emoji} Designing..." if phase == "Creating PDF" else "⏳ Waiting")
+            p2_stat = "✅ Drafted" if "Writing Summaries" in done_phases else (f"{tick_emoji} Synthesizing..." if phase == "Writing Summaries" else "⏳ Waiting")
+            p3_stat = "✅ Formatted" if "Creating PDF" in done_phases else (f"{tick_emoji} Designing..." if phase == "Creating PDF" else "⏳ Waiting")
             p4_stat = "✅ Dispatched" if "Delivering" in done_phases else (f"{tick_emoji} Preparing..." if phase == "Delivering" else "⏳ Waiting")
             
             filled_length = int(progress / 5)
             gauge = "█" * filled_length + "░" * (20 - filled_length)
             
             loading_text = (
-                f"🚀 *GENERATING AI NEWSLETTER*{topic_str}\n\n"
+                f"📰 *GENERATING NEWSLETTER*{topic_str}\n\n"
                 f"*{phase}*\n"
                 f"[{gauge}] {progress}%\n\n"
                 f"*{p1_stat}* | Finding high-signal stories\n"
@@ -123,4 +124,4 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
             pass
             
         idx += 1
-        await asyncio.sleep(2.5)
+        await asyncio.sleep(3.0)
