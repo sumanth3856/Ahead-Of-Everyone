@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import json
 import logging
 from datetime import time, datetime
 from typing import Optional
@@ -924,6 +925,12 @@ async def poll_admin_commands(context: ContextTypes.DEFAULT_TYPE) -> None:
             command_type = cmd['command']
             payload = cmd['payload']
             
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+                    
             logger.info(f"[ADMIN WORKER] Processing command {cmd_id}: {command_type}")
             
             try:

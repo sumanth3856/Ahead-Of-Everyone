@@ -88,9 +88,9 @@ export default function Home() {
                 <motion.span 
                   key={index} 
                   variants={textRevealItem} 
-                  whileHover={{ y: -20, scale: 1.1, color: "var(--color-brand)" }}
+                  whileHover={{ y: -20, scale: 1.1 }}
                   transition={{ type: "spring", stiffness: 300, damping: 10 }}
-                  className="inline-block transition-colors duration-200"
+                  className="inline-block transition-colors duration-200 hover:text-brand"
                 >
                   {char === " " ? "\u00A0" : char}
                 </motion.span>
@@ -102,9 +102,9 @@ export default function Home() {
                 <motion.span 
                   key={index} 
                   variants={textRevealItem} 
-                  whileHover={{ y: -20, scale: 1.1, color: "var(--color-brand-light)" }}
+                  whileHover={{ y: -20, scale: 1.1 }}
                   transition={{ type: "spring", stiffness: 300, damping: 10 }}
-                  className="inline-block text-brand transition-colors duration-200"
+                  className="inline-block text-brand transition-colors duration-200 hover:text-brand-light"
                 >
                   {char === " " ? "\u00A0" : char}
                 </motion.span>
