@@ -2,22 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Zap, Database, Cpu, Shield, Globe } from "lucide-react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { SpatialCard } from "@/components/ui/SpatialCard";
-import { useRef } from "react";
+import { MagneticButton } from "@/components/ui/MagneticButton";
 
 export default function Home() {
-  const containerRef = useRef(null);
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end start"],
-  });
-
-  // Parallax effects
-  const yBg = useTransform(scrollYProgress, [0, 1], ["0%", "50%"]);
-  const yText = useTransform(scrollYProgress, [0, 1], ["0%", "-50%"]);
-  const opacityText = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
+  const router = useRouter();
 
   const staggerContainer = {
     hidden: { opacity: 0 },
@@ -34,61 +26,112 @@ export default function Home() {
     show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" as any } },
   };
 
-  return (
-    <div ref={containerRef} className="flex flex-col items-center overflow-hidden bg-background">
-      
-      {/* Immersive 3D Hero Section */}
-      <section className="relative w-full min-h-[100svh] pt-24 pb-12 flex items-center justify-center perspective-[1200px] transform-style-3d">
-        
-        {/* Parallax Background Orb */}
-        <motion.div 
-          className="absolute inset-0 w-full h-full -z-20 pointer-events-none flex items-center justify-center"
-          style={{ y: yBg }}
-        >
-           <div className="absolute inset-0 w-full h-full transform-style-3d overflow-hidden">
-             {/* Gaussian Mesh Gradient Blur */}
-             <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-[100%] bg-purple-600/30 blur-[120px] mix-blend-normal" />
-             <div className="absolute top-[10%] -right-[10%] w-[60%] h-[60%] rounded-[100%] bg-indigo-500/20 blur-[130px] mix-blend-normal" />
-             <div className="absolute -bottom-[20%] left-[20%] w-[50%] h-[60%] rounded-[100%] bg-brand/25 blur-[140px] mix-blend-normal" />
-           </div>
-        </motion.div>
+  const textRevealContainer = {
+    hidden: { opacity: 1 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05,
+        delayChildren: 0.2,
+      }
+    }
+  };
 
-        {/* Foreground Content with Parallax */}
+  const textRevealItem = {
+    hidden: { y: "120%", opacity: 0 },
+    show: { 
+      y: "0%", 
+      opacity: 1,
+      transition: { 
+        type: "spring",
+        damping: 12,
+        stiffness: 100
+      }
+    }
+  };
+
+  const title1 = "Spatial.".split("");
+  const title2 = "Intelligence.".split("");
+
+  return (
+    <div className="flex flex-col items-center overflow-hidden bg-background">
+      
+      {/* Minimal Hero Section */}
+      <section className="relative w-full min-h-[70svh] pt-24 sm:pt-32 pb-8 sm:pb-12 flex items-center justify-center">
+        
+        {/* Simple Gradient Background */}
+        <div className="absolute inset-0 w-full h-full -z-10 overflow-hidden flex items-center justify-center">
+          <div className="w-[800px] h-[800px] rounded-full bg-brand/10 blur-[120px]" />
+        </div>
+
+        {/* Foreground Content */}
         <motion.div 
           variants={staggerContainer}
           initial="hidden"
           animate="show"
-          style={{ y: yText, opacity: opacityText, z: 100 }}
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center w-full"
+          className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center w-full"
         >
-          <motion.div variants={fadeUp} className="inline-block mb-8 px-6 py-2 rounded-full border border-brand/30 bg-background/50 backdrop-blur-xl text-brand font-bold tracking-widest uppercase shadow-spatial">
+          <motion.div variants={fadeUp} className="inline-block mb-10 px-5 py-2 rounded-full border border-brand/20 bg-brand/5 text-brand font-bold tracking-widest uppercase text-xs sm:text-sm shadow-sm">
             Intelligence Pipeline Active
           </motion.div>
           
+          {/* Hyper-Kinetic Typography */}
           <motion.h1 
-            variants={fadeUp}
-            className="text-6xl sm:text-8xl lg:text-[10rem] font-black tracking-tighter mb-6 leading-[0.9] text-foreground"
+            variants={textRevealContainer}
+            initial="hidden"
+            animate="show"
+            className="text-5xl sm:text-7xl lg:text-[7.5rem] font-black tracking-tighter mb-8 text-foreground leading-[0.9] select-none"
           >
-            Spatial. <br className="hidden sm:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-b from-foreground to-foreground/30 relative inline-block pb-4">
-              Intelligence.
-            </span>
+            <div className="overflow-hidden pt-8 -mt-8 pb-4 pr-4 inline-block cursor-default">
+              {title1.map((char, index) => (
+                <motion.span 
+                  key={index} 
+                  variants={textRevealItem} 
+                  whileHover={{ y: -20, scale: 1.1, color: "#8B5CF6" }}
+                  transition={{ type: "spring", stiffness: 300, damping: 10 }}
+                  className="inline-block transition-colors duration-200"
+                >
+                  {char === " " ? "\u00A0" : char}
+                </motion.span>
+              ))}
+            </div>
+            <br className="hidden sm:block" />
+            <div className="overflow-hidden pt-8 -mt-8 pb-6 pr-4 inline-block cursor-default">
+              {title2.map((char, index) => (
+                <motion.span 
+                  key={index} 
+                  variants={textRevealItem} 
+                  whileHover={{ y: -20, scale: 1.1, color: "#a78bfa" }}
+                  transition={{ type: "spring", stiffness: 300, damping: 10 }}
+                  className="inline-block text-brand transition-colors duration-200"
+                >
+                  {char === " " ? "\u00A0" : char}
+                </motion.span>
+              ))}
+            </div>
           </motion.h1>
           
-          <motion.p variants={fadeUp} className="text-lg sm:text-2xl text-muted max-w-3xl mx-auto mb-12 leading-relaxed font-light px-2 sm:px-0">
+          <motion.p variants={fadeUp} className="text-lg sm:text-2xl text-muted max-w-2xl mx-auto mb-14 leading-relaxed font-light">
             A fully autonomous, AI-powered tech journalism pipeline. We scrape, analyze, and deliver a premium magazine straight to you.
           </motion.p>
           
-          <motion.div variants={fadeUp} className="flex flex-col sm:flex-row justify-center gap-6 w-full sm:w-auto px-4 sm:px-0">
-            <Link href="/services" className="w-full sm:w-auto px-10 py-5 rounded-2xl bg-foreground text-background font-bold tracking-wider hover:bg-foreground/90 shadow-spatial hover:shadow-foreground/20 active:scale-95 transition-all duration-300 flex items-center justify-center gap-3 group">
-              Access Protocols <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
-            </Link>
+          {/* Magnetic CTA */}
+          <motion.div variants={fadeUp} className="flex justify-center w-full">
+            <MagneticButton 
+              strength={40} 
+              onClick={() => router.push('/services')}
+              className="px-10 py-5 rounded-2xl bg-foreground text-background font-bold tracking-wider shadow-spatial active:scale-95 transition-all duration-300 flex items-center gap-3 group relative overflow-hidden border border-border-subtle"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-brand to-brand-light opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <span className="relative z-10 group-hover:text-white transition-colors duration-300">Access Protocols</span>
+              <ArrowRight size={20} className="relative z-10 group-hover:text-white group-hover:translate-x-2 transition-all duration-300" />
+            </MagneticButton>
           </motion.div>
         </motion.div>
       </section>
 
       {/* Services Spatial Stagger Section */}
-      <section className="w-full py-32 relative z-20">
+      <section className="w-full py-16 sm:py-24 relative z-20">
         {/* Background depth for services */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-surface/50 to-background -z-10" />
         
@@ -99,7 +142,7 @@ export default function Home() {
           variants={staggerContainer}
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 perspective-[1200px]"
         >
-          <motion.div variants={fadeUp} className="text-center mb-20">
+          <motion.div variants={fadeUp} className="text-center mb-12 sm:mb-16">
             <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter mb-6 text-foreground">Core <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-light text-glow">Protocols</span></h2>
             <p className="text-muted text-lg sm:text-xl font-light">Our expanding suite of intelligence services.</p>
           </motion.div>

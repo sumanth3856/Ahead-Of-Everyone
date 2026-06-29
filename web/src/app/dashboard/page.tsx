@@ -68,8 +68,8 @@ export default async function DashboardHome() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Connection Status Card */}
-        <SpatialCard depth={5} className="glass rounded-[2rem] p-6 border border-border-subtle lg:col-span-1 shadow-sm">
-          <div className="absolute top-0 right-0 p-4 opacity-5">
+        <SpatialCard depth={5} className="glass rounded-[2rem] p-6 border border-border-subtle lg:col-span-1 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-5 translate-x-4 -translate-y-4 pointer-events-none">
             <Send className="h-24 w-24 text-brand" />
           </div>
           <div className="relative z-10">

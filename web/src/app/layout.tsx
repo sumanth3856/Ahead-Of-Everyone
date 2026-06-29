@@ -3,7 +3,6 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "sonner";
-import { CustomCursor } from "@/components/ui/CustomCursor";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -22,10 +21,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${montserrat.variable} antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${montserrat.variable} antialiased`} data-scroll-behavior="smooth">
       <body className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <CustomCursor />
           {children}
           <Toaster position="bottom-right" richColors theme="system" />
         </ThemeProvider>

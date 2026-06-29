@@ -40,13 +40,13 @@ export default function Navbar({ isLoggedIn = false }: NavbarProps) {
         <div className="w-full px-4 sm:px-6 lg:px-8 transition-all duration-300">
         <div className="flex justify-between items-center h-20">
           
-          <Link href="/" className="flex items-center gap-3 group shrink-0">
-            <div className="relative w-10 h-10 sm:w-12 sm:h-12 overflow-hidden rounded-lg group-hover:shadow-md transition-all duration-500 bg-surface">
-              <Image src="/logo.jpg" alt="AoE Logo" fill className="object-cover" />
+          <Link href="/" className="flex items-center gap-2 sm:gap-3 group shrink min-w-0 pr-2">
+            <div className="relative w-9 h-9 sm:w-12 sm:h-12 shrink-0 overflow-hidden rounded-lg group-hover:shadow-md transition-all duration-500 bg-surface">
+              <Image src="/logo.jpg" alt="AoE Logo" fill className="object-cover" sizes="(max-width: 640px) 36px, 48px" />
             </div>
-            <span className="font-bold text-lg sm:text-xl tracking-wider text-foreground group-hover:text-brand transition-colors whitespace-nowrap">
+            <span className="font-bold text-base sm:text-xl tracking-wider text-foreground group-hover:text-brand transition-colors truncate">
               AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors hidden sm:inline">EVERYONE</span>
-              <span className="text-brand group-hover:text-foreground transition-colors sm:hidden">EVRY1</span>
+              <span className="text-brand group-hover:text-foreground transition-colors sm:hidden">EVERY1</span>
             </span>
           </Link>
 

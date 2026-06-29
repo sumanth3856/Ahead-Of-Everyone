@@ -25,7 +25,7 @@ export default function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
       {/* Mobile Toggle Button */}
       <button 
         onClick={() => setIsOpen(true)}
-        className="md:hidden fixed top-5 left-4 z-50 p-2 bg-surface border border-border-subtle rounded-lg text-brand hover:opacity-80 transition-colors shadow-sm"
+        className="md:hidden fixed top-5 right-4 z-50 p-2 bg-surface border border-border-subtle rounded-lg text-brand hover:opacity-80 transition-colors shadow-sm"
       >
         <Menu className="h-6 w-6" />
       </button>
@@ -40,17 +40,18 @@ export default function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
       
       {/* Sidebar */}
       <aside 
-        className={`fixed md:static inset-y-0 left-0 w-64 border-r border-border-subtle bg-background flex flex-col z-50 shadow-sm transition-transform duration-300 ease-in-out md:translate-x-0 ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed md:static inset-y-0 right-0 md:left-0 md:right-auto w-64 border-l md:border-l-0 border-border-subtle md:border-r bg-background flex flex-col z-50 shadow-sm transition-transform duration-300 ease-in-out md:translate-x-0 ${
+          isOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'
         }`}
       >
         <div className="h-20 flex items-center justify-between px-6 border-b border-border-subtle bg-surface/50">
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden group-hover:opacity-80 transition-opacity">
+            <div className="relative w-12 h-12 shrink-0 rounded-lg overflow-hidden group-hover:opacity-80 transition-opacity bg-surface">
               <img src="/logo.jpg" alt="Logo" className="w-full h-full object-contain" />
             </div>
-            <span className="font-bold tracking-widest text-foreground group-hover:text-brand transition-colors text-sm">
-              AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors">EVERYONE</span>
+            <span className="flex flex-col items-center justify-center font-bold text-base tracking-wider text-foreground group-hover:text-brand transition-colors leading-tight">
+              <span>AHEAD OF</span>
+              <span className="text-brand group-hover:text-foreground transition-colors">EVERYONE</span>
             </span>
           </Link>
           {/* Mobile Close Button */}

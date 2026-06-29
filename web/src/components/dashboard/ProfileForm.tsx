@@ -9,9 +9,10 @@ import { SpatialCard } from "@/components/ui/SpatialCard";
 interface ProfileFormProps {
   initialFullName: string;
   email: string;
+  isAdmin: boolean;
 }
 
-export default function ProfileForm({ initialFullName, email }: ProfileFormProps) {
+export default function ProfileForm({ initialFullName, email, isAdmin }: ProfileFormProps) {
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   async function clientAction(formData: FormData) {
@@ -58,13 +59,16 @@ export default function ProfileForm({ initialFullName, email }: ProfileFormProps
             </div>
             <input
               id="email"
+              name="email"
               type="email"
-              value={email}
-              disabled
-              className="block w-full pl-10 pr-3 py-3 border border-border-subtle rounded-xl bg-surface/50 text-muted cursor-not-allowed focus:outline-none transition-all duration-300"
+              defaultValue={email}
+              disabled={!isAdmin}
+              className={`block w-full pl-10 pr-3 py-3 border border-border-subtle rounded-xl text-foreground focus:outline-none transition-all duration-300 ${!isAdmin ? 'bg-surface/50 cursor-not-allowed opacity-70' : 'bg-surface focus:ring-2 focus:ring-brand focus:border-brand font-medium'}`}
             />
           </div>
-          <p className="text-xs text-muted mt-2">Your email address cannot be changed.</p>
+          <p className="text-xs text-muted mt-2">
+            {isAdmin ? "As an admin, you have permission to change this email address." : "Your email address cannot be changed."}
+          </p>
         </div>
 
         <div>

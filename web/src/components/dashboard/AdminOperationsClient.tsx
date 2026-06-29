@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { insertAdminCommand } from "@/app/dashboard/actions";
 import { SpatialCard } from "@/components/ui/SpatialCard";
-import { MagneticButton } from "@/components/ui/MagneticButton";
+
 import { ShieldAlert, Send, Terminal, Loader2, KeyRound } from "lucide-react";
 
 export function AdminOperationsClient() {
@@ -59,7 +59,7 @@ export function AdminOperationsClient() {
           </p>
         </div>
         
-        <MagneticButton 
+        <button 
           onClick={handleBroadcast}
           disabled={broadcasting}
           className="w-full flex justify-center items-center gap-2 py-4 px-4 border border-transparent rounded-xl shadow-spatial text-sm font-bold text-white bg-red-600 hover:bg-red-500 transition-all duration-300"
@@ -69,7 +69,7 @@ export function AdminOperationsClient() {
               <ShieldAlert size={18} /> INITIATE BROADCAST
             </>
           )}
-        </MagneticButton>
+        </button>
       </SpatialCard>
 
       {/* Crisis Management (Token Update) */}
@@ -97,13 +97,13 @@ export function AdminOperationsClient() {
               className="w-full bg-surface border border-border-subtle rounded-xl py-3 pl-10 pr-4 text-sm text-foreground placeholder:text-muted focus:border-orange-500 focus:ring-1 focus:ring-orange-500/30 transition-all outline-none"
             />
           </div>
-          <MagneticButton 
+          <button 
             onClick={handleUpdateToken}
             disabled={updatingToken}
             className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-orange-500/30 rounded-xl shadow-sm text-sm font-bold text-orange-500 bg-orange-500/10 hover:bg-orange-500/20 transition-all duration-300"
           >
             {updatingToken ? <Loader2 className="animate-spin" size={18} /> : "Update Bot Configuration"}
-          </MagneticButton>
+          </button>
         </div>
       </SpatialCard>
     </div>

@@ -457,7 +457,7 @@ async def link_telegram_account(chat_id: int, link_code: str) -> bool:
     try:
         # First check if the code is valid and not already linked to another chat_id
         row = await execute_with_retry(
-            "SELECT id FROM web_users WHERE link_code = $1", 
+            "SELECT id FROM profiles WHERE telegram_link_code = $1", 
             link_code, 
             is_fetchrow=True
         )
@@ -467,7 +467,7 @@ async def link_telegram_account(chat_id: int, link_code: str) -> bool:
             
         # Update the user record with the telegram_chat_id and clear the link_code so it can't be reused
         await execute_with_retry(
-            "UPDATE web_users SET telegram_chat_id = $1, link_code = NULL WHERE id = $2",
+            "UPDATE profiles SET telegram_chat_id = $1, telegram_link_code = NULL WHERE id = $2",
             chat_id,
             row['id']
         )
@@ -480,7 +480,7 @@ async def get_user_profile(chat_id: int) -> dict | None:
     """Retrieves a user profile by their linked Telegram chat ID."""
     try:
         row = await execute_with_retry(
-            "SELECT full_name, email, tier, telegram_chat_id as chat_id FROM web_users WHERE telegram_chat_id = $1",
+            "SELECT full_name, 'Pro' as tier, telegram_chat_id as chat_id, 'Hidden' as email FROM profiles WHERE telegram_chat_id = $1",
             chat_id,
             is_fetchrow=True
         )
@@ -488,3 +488,28 @@ async def get_user_profile(chat_id: int) -> dict | None:
     except Exception as e:
         logger.error(f"Error getting user profile: {e}")
         return None
+
+async def fetch_pending_admin_commands() -> list:
+    """Fetches all pending admin commands from the database."""
+    try:
+        rows = await execute_with_retry(
+            "SELECT id, command, payload FROM admin_commands WHERE status = 'pending' ORDER BY created_at ASC"
+        )
+        return [dict(r) for r in rows] if rows else []
+    except Exception as e:
+        logger.error(f"Error fetching admin commands: {e}")
+        return []
+
+async def update_admin_command_status(cmd_id: int, status: str, error_msg: str = None) -> bool:
+    """Updates the status and optional error message of an admin command."""
+    try:
+        await execute_with_retry(
+            "UPDATE admin_commands SET status = $1, error_msg = $2 WHERE id = $3",
+            status,
+            error_msg,
+            cmd_id
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error updating admin command status: {e}")
+        return False
