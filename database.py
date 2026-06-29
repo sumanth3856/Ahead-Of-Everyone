@@ -121,6 +121,17 @@ async def init_db():
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS web_users (
+                    id SERIAL PRIMARY KEY,
+                    full_name TEXT,
+                    email TEXT UNIQUE NOT NULL,
+                    tier TEXT DEFAULT 'Free',
+                    telegram_chat_id BIGINT UNIQUE,
+                    link_code TEXT UNIQUE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             try:
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS supabase_path TEXT;")
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
@@ -440,3 +451,40 @@ async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: s
         """, versioned_topic, file_id, current_ist_date, vec_str, supabase_path, user_id)
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")
+
+async def link_telegram_account(chat_id: int, link_code: str) -> bool:
+    """Links a Telegram chat ID to a web user profile using a unique link code."""
+    try:
+        # First check if the code is valid and not already linked to another chat_id
+        row = await execute_with_retry(
+            "SELECT id FROM web_users WHERE link_code = $1", 
+            link_code, 
+            is_fetchrow=True
+        )
+        
+        if not row:
+            return False
+            
+        # Update the user record with the telegram_chat_id and clear the link_code so it can't be reused
+        await execute_with_retry(
+            "UPDATE web_users SET telegram_chat_id = $1, link_code = NULL WHERE id = $2",
+            chat_id,
+            row['id']
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error linking telegram account: {e}")
+        return False
+
+async def get_user_profile(chat_id: int) -> dict | None:
+    """Retrieves a user profile by their linked Telegram chat ID."""
+    try:
+        row = await execute_with_retry(
+            "SELECT full_name, email, tier, telegram_chat_id as chat_id FROM web_users WHERE telegram_chat_id = $1",
+            chat_id,
+            is_fetchrow=True
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error getting user profile: {e}")
+        return None
