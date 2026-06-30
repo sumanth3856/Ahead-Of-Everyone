@@ -945,7 +945,7 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
                     progress_callback("Delivering", 100, "⚠️ Generation failed.", mark_done="Delivering")
                 return
                 
-        caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today."
+        caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%b %d, %Y')} IST\n\nInnovating the future, today."
         
         success_count = 0
         pretty_filename = None

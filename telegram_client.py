@@ -1,10 +1,13 @@
 import os
 import requests
 import logging
+import pytz
 from datetime import datetime
 from config import BRAND_NAME
 
 logger = logging.getLogger(__name__)
+
+_IST = pytz.timezone('Asia/Kolkata')
 
 def send_pdf_to_telegram(filename: str, bot_token: str, chat_id: str) -> bool:
     """Delivers the payload to Telegram using the provided credentials."""
@@ -16,7 +19,7 @@ def send_pdf_to_telegram(filename: str, bot_token: str, chat_id: str) -> bool:
             files = {"document": (pretty_filename, file)}
             data = {
                 "chat_id": chat_id, 
-                "caption": f"📰 *{BRAND_NAME}* | Digest for {datetime.now().strftime('%b %d, %Y')}\n\nInnovating the future, today.",
+                "caption": f"📰 *{BRAND_NAME}* | Digest for {datetime.now(_IST).strftime('%b %d, %Y')} IST\n\nInnovating the future, today.",
                 "parse_mode": "Markdown"
             }
             response = requests.post(url, data=data, files=files)

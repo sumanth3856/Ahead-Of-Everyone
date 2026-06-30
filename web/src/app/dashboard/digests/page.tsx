@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { FileText, Download, Calendar, ExternalLink } from "lucide-react";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 import Link from "next/link";
+import { toISTTime } from "@/lib/ist";
 
 export const metadata = {
   title: 'Digests Archive | Daily Tech Digest',
@@ -84,7 +85,7 @@ export default async function DigestsPage() {
                     {digest.generated_date_ist}
                     {digest.created_at && (
                       <span className="opacity-70 ml-1">
-                        {new Date(digest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {toISTTime(digest.created_at)} IST
                       </span>
                     )}
                   </div>

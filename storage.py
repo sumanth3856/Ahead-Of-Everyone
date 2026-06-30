@@ -3,10 +3,13 @@ import aiohttp
 import logging
 from database import get_http_session
 import datetime
+import pytz
 import urllib.parse
 from dotenv import load_dotenv
 
 load_dotenv()
+
+_IST = pytz.timezone('Asia/Kolkata')
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ async def upload_pdf_to_supabase(file_path: str, topic: str) -> str:
     bucket_name = "daily-digests"
     
     # Generate path: YYYY-MM-DD/topic.pdf
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    date_str = datetime.datetime.now(_IST).strftime("%Y-%m-%d")
     
     # Sanitize topic string for safe URL/file path
     safe_topic = "".join(c if c.isalnum() else "_" for c in topic)

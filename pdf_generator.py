@@ -5,6 +5,10 @@ import re
 import time
 from fpdf import FPDF
 from datetime import datetime
+import pytz
+
+_IST = pytz.timezone('Asia/Kolkata')
+def _now_ist(): return datetime.now(_IST)
 
 logger = logging.getLogger(__name__)
 
@@ -666,7 +670,7 @@ def draw_conclusion_page(pdf: CustomPDF):
 
 def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callback=None, synthesis: dict = None) -> str:
     """Generates a premium Dark/Light Mode multi-page PDF."""
-    date_str = datetime.now().strftime("%d %B %Y")
+    date_str = _now_ist().strftime("%d %B %Y")
     
     pdf = CustomPDF(date_str, custom_topic)
     
@@ -716,9 +720,9 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
     draw_conclusion_page(pdf)
     
     if custom_topic:
-        file_name = f"AoE_{custom_topic.replace(' ', '_')}_({datetime.now().strftime('%d-%m-%Y')}).pdf"
+        file_name = f"AoE_{custom_topic.replace(' ', '_')}_({_now_ist().strftime('%d-%m-%Y')}).pdf"
     else:
-        file_name = f"AoE_Tech_News_({datetime.now().strftime('%d-%m-%Y')}).pdf"
+        file_name = f"AoE_Tech_News_({_now_ist().strftime('%d-%m-%Y')}).pdf"
         
     try:
         if progress_callback:

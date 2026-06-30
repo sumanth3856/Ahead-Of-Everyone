@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import LinkTelegramClient from "@/components/dashboard/LinkTelegramClient";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 import { LiveClock } from "@/components/ui/LiveClock";
+import { toISTTime } from "@/lib/ist";
 
 export default async function DashboardHome() {
   const supabase = await createClient();
@@ -188,7 +189,7 @@ export default async function DashboardHome() {
                     {row.generated_date_ist}
                     {row.created_at && (
                       <span className="ml-2 text-xs opacity-70">
-                        {new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {toISTTime(row.created_at)} IST
                       </span>
                     )}
                   </td>
