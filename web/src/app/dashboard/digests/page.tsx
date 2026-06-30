@@ -29,7 +29,7 @@ export default async function DigestsPage() {
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
     .select("topic, generated_date_ist, supabase_path, file_id, created_at")
-    .order("generated_date_ist", { ascending: false });
+    .order("created_at", { ascending: false });
     
   const allDigests = digests || [];
 

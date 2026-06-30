@@ -42,15 +42,19 @@ export default async function DashboardHome() {
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
     .select("topic, generated_date_ist, supabase_path, file_id, created_at")
-    .order("generated_date_ist", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(10);
     
   if (dbError) {
     console.error("Error fetching digests:", dbError);
   }
+  
+  // Separate count query — not capped by the .limit(10) above
+  const { count: totalDigests } = await supabaseAdmin
+    .from("digests_cache")
+    .select("*", { count: "exact", head: true });
     
   const recentDigests = digests || [];
-  const totalDigests = recentDigests.length;
 
   const publicStorageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/daily-digests/`;
 
@@ -142,10 +146,18 @@ export default async function DashboardHome() {
               <Clock className="h-5 w-5 text-brand" />
               <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Latest Update</h3>
             </div>
-            <p className="text-xl sm:text-2xl font-extrabold text-foreground truncate">
-              {recentDigests.length > 0 ? recentDigests[0].generated_date_ist : "N/A"}
-            </p>
-            <p className="text-xs text-muted font-semibold mt-2">Time in IST</p>
+            {recentDigests.length > 0 ? (
+              <>
+                <p className="text-xl sm:text-2xl font-extrabold text-foreground truncate">
+                  {recentDigests[0].generated_date_ist}
+                </p>
+                <p className="text-xs text-brand font-semibold mt-2">
+                  {toISTTime(recentDigests[0].created_at)} IST
+                </p>
+              </>
+            ) : (
+              <p className="text-xl font-extrabold text-foreground">N/A</p>
+            )}
           </SpatialCard>
       </section>
 

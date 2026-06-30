@@ -337,6 +337,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await edit_or_reply(text=stats_text, reply_markup=reply_markup)
             
         elif action == "admin_broadcast":
+            # Guard against duplicate concurrent broadcasts
+            if context.bot_data.get("broadcast_in_progress", False):
+                await query.answer("⚠️ A broadcast is already running. Use /cancel to abort it first.", show_alert=True)
+                return
+
             progress_state = {
                 "phase": "Finding Stories",
                 "progress": 0,
@@ -682,6 +687,14 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
     """Force an immediate daily broadcast (Admin Only)."""
     chat_id = update.message.chat_id
     logger.info(f"[BOT] Admin {chat_id} invoked /broadcast")
+
+    # Guard against duplicate concurrent broadcasts
+    if context.bot_data.get("broadcast_in_progress", False):
+        await update.message.reply_text(
+            "⚠️ *Broadcast already in progress.*\nUse /cancel to abort the running broadcast first.",
+            parse_mode="Markdown"
+        )
+        return
 
     progress_state = {
         "phase": "Finding Stories",
