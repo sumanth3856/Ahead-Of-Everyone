@@ -10,7 +10,7 @@ export default function Footer() {
           <div>
             <Link href="/" className="flex items-center gap-3 group mb-4">
               <div className="relative w-10 h-10 overflow-hidden rounded-lg group-hover:shadow-md transition-all duration-500 bg-surface-hover">
-                <Image src="/logo.png" alt="AoE Logo" fill className="object-cover" />
+                <Image src="/logo.jpg" alt="AoE Logo" fill className="object-cover" />
               </div>
               <span className="font-bold text-xl tracking-wider text-foreground group-hover:text-brand transition-colors">
                 AHEAD OF <span className="text-brand group-hover:text-foreground transition-colors">EVERYONE</span>
@@ -23,23 +23,24 @@ export default function Footer() {
           
           <div>
             <h3 className="font-bold text-foreground tracking-widest uppercase text-sm mb-4">Quick Links</h3>
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               <li><Link href="/" className="text-muted hover:text-brand font-medium transition-colors text-sm">Home</Link></li>
-              <li><Link href="/services" className="text-muted hover:text-brand font-medium transition-colors text-sm">Services</Link></li>
               <li><Link href="/about" className="text-muted hover:text-brand font-medium transition-colors text-sm">About</Link></li>
+              <li><Link href="/faq" className="text-muted hover:text-brand font-medium transition-colors text-sm">FAQ</Link></li>
+              <li><Link href="/contact" className="text-muted hover:text-brand font-medium transition-colors text-sm">Contact</Link></li>
             </ul>
           </div>
 
           <div>
             <h3 className="font-bold text-foreground tracking-widest uppercase text-sm mb-4">Connect</h3>
             <div className="flex space-x-4">
-              <a href="#" className="w-10 h-10 rounded-full border border-border-subtle flex items-center justify-center text-muted hover:text-brand hover:border-brand shadow-sm transition-all">
+              <a href="https://github.com/sumanth3856/Ahead-Of-Everyone" target="_blank" rel="noopener noreferrer" className="w-11 h-11 rounded-full border border-border-subtle flex items-center justify-center text-muted hover:text-brand hover:border-brand shadow-sm transition-all" aria-label="Terminal">
                 <Terminal size={18} />
               </a>
-              <a href="#" className="w-10 h-10 rounded-full border border-border-subtle flex items-center justify-center text-muted hover:text-brand hover:border-brand shadow-sm transition-all">
+              <a href="https://aheadofeveryone.com" target="_blank" rel="noopener noreferrer" className="w-11 h-11 rounded-full border border-border-subtle flex items-center justify-center text-muted hover:text-brand hover:border-brand shadow-sm transition-all" aria-label="Globe">
                 <Globe size={18} />
               </a>
-              <a href="#" className="w-10 h-10 rounded-full border border-border-subtle flex items-center justify-center text-muted hover:text-brand hover:border-brand shadow-sm transition-all">
+              <a href="https://t.me/AheadOfEveryoneBot" target="_blank" rel="noopener noreferrer" className="w-11 h-11 rounded-full border border-border-subtle flex items-center justify-center text-muted hover:text-brand hover:border-brand shadow-sm transition-all" aria-label="Telegram Send">
                 <Send size={18} />
               </a>
             </div>
@@ -48,11 +49,11 @@ export default function Footer() {
         
         <div className="mt-12 pt-8 border-t border-border-subtle flex flex-col md:flex-row justify-between items-center">
           <p className="text-muted font-medium text-xs">
-            © {new Date().getFullYear()} Ahead Of Everyone. Engineered by Sumanth.
+            © {new Date().getFullYear()} Ahead Of Everyone. Engineered by team Ahead Of Everyone.
           </p>
           <div className="mt-4 md:mt-0 flex space-x-4">
-            <Link href="#" className="text-muted font-medium hover:text-brand text-xs">Privacy</Link>
-            <Link href="#" className="text-muted font-medium hover:text-brand text-xs">Terms</Link>
+            <Link href="/" className="text-muted font-medium hover:text-brand text-xs py-2 px-1">Privacy</Link>
+            <Link href="/" className="text-muted font-medium hover:text-brand text-xs py-2 px-1">Terms</Link>
           </div>
         </div>
       </div>

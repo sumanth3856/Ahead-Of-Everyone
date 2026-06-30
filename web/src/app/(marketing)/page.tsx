@@ -81,7 +81,7 @@ export default function Home() {
             variants={textRevealContainer}
             initial="hidden"
             animate="show"
-            className="text-5xl sm:text-7xl lg:text-[7.5rem] font-black tracking-tighter mb-8 text-foreground leading-[0.9] select-none"
+            className="text-4xl sm:text-7xl lg:text-[7.5rem] font-black tracking-tighter mb-8 text-foreground leading-[0.9] select-none"
           >
             <div className="overflow-hidden pt-8 -mt-8 pb-4 pr-4 inline-block cursor-default">
               {title1.map((char, index) => (
@@ -120,8 +120,8 @@ export default function Home() {
           <motion.div variants={fadeUp} className="flex justify-center w-full">
             <MagneticButton 
               strength={40} 
-              onClick={() => router.push('/services')}
-              className="px-10 py-5 rounded-2xl bg-foreground text-background font-bold tracking-wider shadow-spatial active:scale-95 transition-all duration-300 flex items-center gap-3 group relative overflow-hidden border border-border-subtle"
+              onClick={() => router.push('/login')}
+              className="px-6 py-4 sm:px-10 sm:py-5 rounded-2xl bg-foreground text-background font-bold tracking-wider shadow-spatial active:scale-95 transition-all duration-300 flex items-center gap-3 group relative overflow-hidden border border-border-subtle"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-brand to-brand-light opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <span className="relative z-10 group-hover:text-white transition-colors duration-300">Get Started</span>
@@ -152,7 +152,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-6 gap-8 sm:gap-12 auto-rows-fr">
             {/* Daily Tech Digest Card - Large Span */}
             <motion.div variants={fadeUp} className="md:col-span-4 h-full transform-style-3d">
-              <SpatialCard depth={15} className="h-full p-10 sm:p-14 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer">
+              <SpatialCard depth={15} className="h-full p-6 sm:p-10 md:p-14 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-brand/10 flex items-center justify-center mb-8 transition-colors duration-500 shadow-inner">
                   <Zap className="text-brand" size={36} />
                 </div>
@@ -160,7 +160,7 @@ export default function Home() {
                 <p className="text-muted text-base sm:text-xl mb-8 sm:mb-10 flex-grow leading-relaxed font-light">
                   Our flagship product. A stunning light-mode PDF magazine delivered to Telegram every morning, curated by our Multi-Model AI Cascade.
                 </p>
-                <Link href="/services" aria-label="Get Started with Daily Tech Digest" className="text-brand font-bold tracking-widest uppercase flex items-center gap-3 group-hover:gap-5 transition-all duration-300 w-fit text-sm">
+                <Link href="/login" aria-label="Get Started with Daily Tech Digest" className="text-brand font-bold tracking-widest uppercase flex items-center gap-3 group-hover:gap-5 transition-all duration-300 w-fit text-sm">
                   Get Started <ArrowRight size={18} />
                 </Link>
               </SpatialCard>
@@ -168,7 +168,7 @@ export default function Home() {
 
             {/* Placeholder Service 1 - Small Span */}
             <motion.div variants={fadeUp} className="md:col-span-2 h-full transform-style-3d">
-              <SpatialCard depth={25} className="h-full p-10 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer bg-surface/50">
+              <SpatialCard depth={25} className="h-full p-6 sm:p-10 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer bg-surface/50">
                 <div className="w-16 h-16 rounded-2xl bg-surface-hover flex items-center justify-center mb-8 group-hover:bg-brand/10 transition-colors duration-500">
                   <Database className="text-muted group-hover:text-brand transition-colors duration-500" size={32} />
                 </div>
@@ -182,7 +182,7 @@ export default function Home() {
 
             {/* Placeholder Service 2 - Medium Span */}
             <motion.div variants={fadeUp} className="md:col-span-3 h-full transform-style-3d">
-              <SpatialCard depth={20} className="h-full p-10 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer bg-surface/50">
+              <SpatialCard depth={20} className="h-full p-6 sm:p-10 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer bg-surface/50">
                 <div className="w-16 h-16 rounded-2xl bg-surface-hover flex items-center justify-center mb-8 group-hover:bg-brand/10 transition-colors duration-500">
                   <Cpu className="text-muted group-hover:text-brand transition-colors duration-500" size={32} />
                 </div>
@@ -196,7 +196,7 @@ export default function Home() {
 
             {/* New Service - Medium Span */}
             <motion.div variants={fadeUp} className="md:col-span-3 h-full transform-style-3d">
-              <SpatialCard depth={20} className="h-full p-10 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer bg-surface/50">
+              <SpatialCard depth={20} className="h-full p-6 sm:p-10 rounded-[2.5rem] border-border-subtle flex flex-col group cursor-pointer bg-surface/50">
                 <div className="w-16 h-16 rounded-2xl bg-surface-hover flex items-center justify-center mb-8 group-hover:bg-brand/10 transition-colors duration-500">
                   <Globe className="text-muted group-hover:text-brand transition-colors duration-500" size={32} />
                 </div>

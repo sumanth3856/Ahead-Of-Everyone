@@ -30,6 +30,7 @@ html {
   --glass-bg: rgba(255, 255, 255, 0.7);
   --shadow-spatial: 0 50px 100px -20px rgba(113, 27, 209, 0.15), 0 30px 60px -30px rgba(0, 0, 0, 0.1);
   --spatial-inset: inset 0 1px 1px rgba(0, 0, 0, 0.05), inset 0 -1px 1px rgba(0, 0, 0, 0.1);
+  --tab-active-text: var(--color-brand);
 }
 
 .dark {
@@ -43,6 +44,7 @@ html {
   --glass-bg: rgba(24, 24, 27, 0.6);
   --shadow-spatial: 0 50px 100px -20px rgba(113, 27, 209, 0.25), 0 30px 60px -30px rgba(0, 0, 0, 0.5);
   --spatial-inset: inset 0 1px 1px rgba(255, 255, 255, 0.1), inset 0 -1px 1px rgba(0, 0, 0, 0.5);
+  --tab-active-text: #ffffff;
 }
 
 body {
@@ -52,7 +54,6 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
   min-height: 100vh;
-  zoom: 0.9;
 }
 
 /* Custom Utilities */

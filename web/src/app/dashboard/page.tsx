@@ -41,26 +41,26 @@ export default async function DashboardHome() {
 
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
-    .select("topic, generated_date_ist, supabase_path, file_id, created_at")
-    .order("created_at", { ascending: false })
-    .limit(10);
+    .select("topic, generated_date_ist, supabase_path, file_id, created_at, user_id")
+    .or(`user_id.eq.${user.id},user_id.is.null`)
+    .order("created_at", { ascending: false });
     
   if (dbError) {
     console.error("Error fetching digests:", dbError);
   }
   
-  // Separate count query — not capped by the .limit(10) above
   const { count: totalDigests } = await supabaseAdmin
     .from("digests_cache")
-    .select("*", { count: "exact", head: true });
+    .select("*", { count: "exact", head: true })
+    .or(`user_id.eq.${user.id},user_id.is.null`);
     
-  const recentDigests = digests || [];
+  const allDigests = digests || [];
 
   const publicStorageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/daily-digests/`;
 
   return (
     <main className="max-w-6xl mx-auto flex flex-col gap-8 pb-12 animate-in fade-in duration-500">
-      <header className="relative overflow-hidden rounded-3xl bg-surface/50 border border-border-subtle p-8 shadow-sm">
+      <header className="relative overflow-hidden rounded-3xl bg-surface/50 border border-border-subtle p-4 sm:p-6 md:p-8 shadow-sm">
         <div className="absolute inset-0 bg-gradient-to-r from-brand/10 via-transparent to-transparent opacity-50" />
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex flex-col gap-1.5">
@@ -146,13 +146,13 @@ export default async function DashboardHome() {
               <Clock className="h-5 w-5 text-brand" />
               <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Latest Update</h3>
             </div>
-            {recentDigests.length > 0 ? (
+            {allDigests.length > 0 ? (
               <>
                 <p className="text-xl sm:text-2xl font-extrabold text-foreground truncate">
-                  {recentDigests[0].generated_date_ist}
+                  {allDigests[0].generated_date_ist}
                 </p>
                 <p className="text-xs text-brand font-semibold mt-2">
-                  {toISTTime(recentDigests[0].created_at)} IST
+                  {toISTTime(allDigests[0].created_at)} IST
                 </p>
               </>
             ) : (
@@ -161,34 +161,37 @@ export default async function DashboardHome() {
           </SpatialCard>
       </section>
 
-      {/* Recent Digests Table */}
-      <section aria-label="Recent Transmissions">
+      {/* All Digests Table */}
+      <section aria-label="Transmissions Archive">
         <SpatialCard depth={2} className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">
         <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-surface">
-          <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Recent Transmissions</h2>
-          <span className="text-xs text-muted font-bold uppercase tracking-widest">Live Feed</span>
+          <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Transmissions Archive</h2>
+          <span className="text-xs text-muted font-bold uppercase tracking-widest">Total: {allDigests.length}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <caption className="sr-only">Recent Transmissions Live Feed</caption>
+            <caption className="sr-only">Transmissions Archive Table</caption>
             <thead className="text-xs text-muted uppercase bg-surface/50 border-b border-border-subtle">
               <tr>
-                <th scope="col" className="px-6 py-4 font-bold tracking-wider">Topic</th>
-                <th scope="col" className="px-6 py-4 font-bold tracking-wider">Date Generated (IST)</th>
-                <th scope="col" className="px-6 py-4 font-bold tracking-wider text-right">Action</th>
+                <th scope="col" className="px-3 sm:px-6 py-4 font-bold tracking-wider">Topic</th>
+                <th scope="col" className="px-3 sm:px-6 py-4 font-bold tracking-wider">Date Generated (IST)</th>
+                <th scope="col" className="px-3 sm:px-6 py-4 font-bold tracking-wider text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/5">
-              {recentDigests.length === 0 && !dbError && (
+              {allDigests.length === 0 && !dbError && (
                 <tr>
                   <td colSpan={3} className="px-6 py-8 text-center text-muted italic">
                     No newsletters available yet.
                   </td>
                 </tr>
               )}
-              {recentDigests.map((row, i) => (
-                <tr key={i} className="hover:bg-surface transition-all duration-300 group hover:scale-[1.01] hover:shadow-sm border-b border-transparent hover:border-brand/20 relative z-10 bg-background/50 hover:bg-surface/80">
-                  <td scope="row" className="px-6 py-5 font-bold text-foreground group-hover:text-brand transition-colors capitalize">
+              {allDigests.map((row, i) => (
+                <tr key={i} className="group relative z-10 bg-background/30 hover:bg-brand/5 border-l-4 border-l-transparent hover:border-l-brand transition-all duration-300">
+                  <td scope="row" className="px-3 sm:px-6 py-5 font-bold text-foreground group-hover:text-brand transition-colors capitalize flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-surface border border-border-subtle flex items-center justify-center shrink-0 group-hover:border-brand/30 transition-colors">
+                      <FileText className="w-5 h-5 text-muted group-hover:text-brand transition-colors" />
+                    </div>
                     {(() => {
                       const cleanTopic = (row.topic || "").replace(/^v4:/, "").replace(/_/g, " ");
                       if (cleanTopic.toLowerCase() === "latest") {
@@ -197,7 +200,7 @@ export default async function DashboardHome() {
                       return cleanTopic;
                     })()}
                   </td>
-                  <td className="px-6 py-4 text-muted font-medium whitespace-nowrap">
+                  <td className="px-3 sm:px-6 py-4 text-muted font-medium whitespace-normal sm:whitespace-nowrap">
                     {row.generated_date_ist}
                     {row.created_at && (
                       <span className="ml-2 text-xs opacity-70">
@@ -205,27 +208,27 @@ export default async function DashboardHome() {
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 sm:px-6 py-4 text-right">
                     {row.supabase_path ? (
                       <Link 
                         href={`${publicStorageUrl}${row.supabase_path}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand text-brand hover:text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300"
+                        className="inline-flex items-center gap-2 px-3 py-2.5 sm:px-5 bg-brand hover:bg-brand-light text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 shadow-md shadow-brand/20 hover:shadow-lg hover:-translate-y-0.5"
                       >
-                        <Download size={14} /> Download
+                        <Download size={14} /> <span className="hidden sm:inline">Download</span>
                       </Link>
                     ) : row.file_id ? (
                       <Link 
                         href={`/api/download?file_id=${row.file_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand text-brand hover:text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300"
+                        className="inline-flex items-center gap-2 px-3 py-2.5 sm:px-5 bg-brand hover:bg-brand-light text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all duration-300 shadow-md shadow-brand/20 hover:shadow-lg hover:-translate-y-0.5"
                       >
-                        <Download size={14} /> Download
+                        <Download size={14} /> <span className="hidden sm:inline">Download</span>
                       </Link>
                     ) : (
-                      <span className="text-xs text-muted italic">Processing...</span>
+                      <span className="text-xs text-muted italic inline-flex items-center gap-2 px-3 py-2.5 bg-surface border border-border-subtle rounded-xl"><Activity size={14} className="animate-pulse" /> Processing</span>
                     )}
                   </td>
                 </tr>

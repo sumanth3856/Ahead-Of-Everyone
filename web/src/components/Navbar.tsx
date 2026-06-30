@@ -20,14 +20,19 @@ export default function Navbar({ isLoggedIn = false }: NavbarProps) {
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
+    
+    // Check initial scroll position immediately upon mount
+    handleScroll();
+    
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   const navLinks = [
     { name: "Home", path: "/" },
-    { name: "Services", path: "/services" },
     { name: "About", path: "/about" },
+    { name: "FAQ", path: "/faq" },
+    { name: "Contact", path: "/contact" },
   ];
 
   return (
@@ -102,7 +107,7 @@ export default function Navbar({ isLoggedIn = false }: NavbarProps) {
             <ThemeToggle />
             <button 
               onClick={() => setIsOpen(!isOpen)}
-              className="text-foreground hover:text-brand transition-colors p-2 ml-1"
+              className="text-foreground hover:text-brand transition-colors p-3 ml-1"
               aria-label="Toggle menu"
             >
               <Menu className="h-6 w-6" />
@@ -135,7 +140,7 @@ export default function Navbar({ isLoggedIn = false }: NavbarProps) {
                 <span className="font-bold tracking-widest text-foreground text-sm uppercase">
                   Menu
                 </span>
-                <button onClick={() => setIsOpen(false)} className="text-muted hover:text-brand p-2">
+                <button onClick={() => setIsOpen(false)} className="text-muted hover:text-brand p-3">
                   <X className="h-6 w-6" />
                 </button>
               </div>
@@ -170,7 +175,7 @@ export default function Navbar({ isLoggedIn = false }: NavbarProps) {
                       Dashboard
                     </Link>
                     <form action={logout} className="flex flex-col">
-                      <button type="submit" className="text-sm font-bold tracking-widest uppercase text-muted hover:text-red-500 transition-colors text-center py-2">
+                      <button type="submit" className="text-sm font-bold tracking-widest uppercase text-muted hover:text-red-500 transition-colors text-center py-3">
                         Sign Out
                       </button>
                     </form>

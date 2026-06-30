@@ -3,6 +3,7 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AnimationProvider } from "@/components/AnimationProvider";
+import { ScrollProgress } from "@/components/ScrollProgress";
 import { Toaster } from "sonner";
 
 const montserrat = Montserrat({
@@ -28,10 +29,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${montserrat.variable} antialiased`} data-scroll-behavior="smooth">
-      <body className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
+      <body className="font-sans min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <AnimationProvider>
-            {children}
+            <ScrollProgress />
+            <div className="flex-1 flex flex-col">
+              {children}
+            </div>
             <Toaster position="bottom-right" richColors theme="system" />
           </AnimationProvider>
         </ThemeProvider>

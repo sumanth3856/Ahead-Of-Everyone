@@ -205,7 +205,7 @@ export function AdminOperationsClient() {
           "via-red-500/60"
         }`} />
         
-        <div className="p-8 flex flex-col flex-grow">
+        <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-grow">
           <div className="flex items-center gap-4 mb-6">
             <div className="relative">
               <div className={`absolute inset-0 blur-lg rounded-full transition-opacity duration-500 ${
@@ -247,7 +247,7 @@ export function AdminOperationsClient() {
         {/* Subtle top accent line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-orange-500/60 to-transparent" />
         
-        <div className="p-8 flex flex-col flex-grow">
+        <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-grow">
           <div className="flex items-center gap-4 mb-6">
             <div className="relative">
               <div className="absolute inset-0 bg-orange-500/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />

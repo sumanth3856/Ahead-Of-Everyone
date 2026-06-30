@@ -24,7 +24,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden selection:bg-brand/30">
+    <div className="flex h-[100dvh] bg-background overflow-hidden selection:bg-brand/30">
       <RealtimeSync />
       <Sidebar isAdmin={isAdmin} />
       <div className="flex-1 flex flex-col overflow-hidden relative z-10">

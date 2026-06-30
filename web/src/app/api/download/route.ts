@@ -1,26 +1,28 @@
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const fileId = searchParams.get('file_id');
-
-  if (!fileId) {
-    return new NextResponse('Missing file_id', { status: 400 });
-  }
-
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  if (!botToken) {
-    return new NextResponse('Bot token not configured', { status: 500 });
-  }
-
   try {
+    const { searchParams } = new URL(request.url);
+    const fileId = searchParams.get('file_id');
+
+    if (!fileId) {
+      return new NextResponse('Missing file_id', { status: 400 });
+    }
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) {
+      return new NextResponse('Bot token not configured', { status: 500 });
+    }
+
     // 1. Get file path from Telegram
     const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${fileId}`;
     const getFileRes = await fetch(getFileUrl);
     const getFileData = await getFileRes.json();
 
     if (!getFileData.ok) {
-      return new NextResponse('Failed to get file from Telegram: ' + getFileData.description, { status: 404 });
+      // Obfuscate underlying telegram error from client
+      console.error("Telegram API Error:", getFileData.description);
+      return new NextResponse('Failed to locate file', { status: 404 });
     }
 
     const filePath = getFileData.result.file_path;
@@ -41,7 +43,6 @@ export async function GET(request: Request) {
       status: 200,
       headers
     });
-
   } catch (e) {
     console.error('Error downloading from Telegram:', e);
     return new NextResponse('Internal Server Error', { status: 500 });
