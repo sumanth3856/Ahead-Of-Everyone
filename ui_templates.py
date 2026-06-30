@@ -88,7 +88,9 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
                 pass
                 
             phase = progress_state.get("phase", "Finding Stories")
-            detail = progress_state.get("detail", "🌐 Initializing request...")
+            raw_detail = progress_state.get("detail", "🌐 Initializing request...")
+            # Escape markdown reserved characters to prevent parse errors in Telegram
+            detail = raw_detail.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('`', '\\`')
             done_phases = progress_state.get("done_phases", set())
             
             tick_emoji = ticker_emojis[idx % len(ticker_emojis)]
