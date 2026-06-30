@@ -27,8 +27,7 @@ export default async function DigestsPage() {
 
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
-    .select("topic, generated_date_ist, supabase_path")
-    .or(`user_id.eq.${user.id},user_id.is.null`)
+    .select("topic, generated_date_ist, supabase_path, file_id")
     .order("generated_date_ist", { ascending: false });
     
   const allDigests = digests || [];
@@ -60,10 +59,15 @@ export default async function DigestsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {allDigests.map((digest, index) => {
-            // Use public storage URL or exact path if it's already an absolute URL
-            const fileUrl = digest.supabase_path.startsWith('http') 
-              ? digest.supabase_path 
-              : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/daily-digests/${digest.supabase_path}`;
+            // Use public storage URL or fallback to Telegram API proxy
+            let fileUrl = "#";
+            if (digest.supabase_path) {
+              fileUrl = digest.supabase_path.startsWith('http') 
+                ? digest.supabase_path 
+                : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/daily-digests/${digest.supabase_path}`;
+            } else if (digest.file_id) {
+              fileUrl = `/api/download?file_id=${digest.file_id}`;
+            }
             
             return (
               <SpatialCard 

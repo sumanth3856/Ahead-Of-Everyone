@@ -20,10 +20,15 @@ export async function generateTelegramLinkCode() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || "User";
+
   const { error } = await supabaseAdmin
     .from('profiles')
-    .update({ telegram_link_code: code })
-    .eq('id', user.id);
+    .upsert({ 
+      id: user.id, 
+      telegram_link_code: code,
+      full_name: fullName
+    }, { onConflict: 'id' });
 
   if (error) {
     console.error("Failed to update telegram link code:", error);

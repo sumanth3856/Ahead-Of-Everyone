@@ -241,16 +241,36 @@ async def get_all_subscribers() -> list[int]:
         logger.error(f"Error getting subscribers: {e}")
         return []
 
-async def link_telegram_account(chat_id: int, code: str) -> bool:
+async def link_telegram_account(chat_id: int, link_code: str) -> bool:
+    """Links a Telegram chat ID to a web user profile using a unique link code."""
     try:
-        row = await execute_with_retry("SELECT id FROM profiles WHERE telegram_link_code = $1", code, is_fetchrow=True)
-        if row:
-            user_id = row['id']
-            await execute_with_retry("UPDATE profiles SET telegram_chat_id = $1, telegram_link_code = NULL WHERE id = $2", chat_id, user_id)
-            return True
-        return False
+        # First check if the code is valid and not already linked to another chat_id
+        row = await execute_with_retry(
+            "SELECT id FROM profiles WHERE telegram_link_code = $1", 
+            link_code, 
+            is_fetchrow=True
+        )
+        
+        if not row:
+            return False
+            
+        user_id = row['id']
+        
+        # Clear this chat_id from any OTHER profile to prevent UNIQUE constraint violations
+        await execute_with_retry(
+            "UPDATE profiles SET telegram_chat_id = NULL WHERE telegram_chat_id = $1",
+            chat_id
+        )
+            
+        # Update the user record with the telegram_chat_id and clear the link_code so it can't be reused
+        await execute_with_retry(
+            "UPDATE profiles SET telegram_chat_id = $1, telegram_link_code = NULL WHERE id = $2",
+            chat_id,
+            user_id
+        )
+        return True
     except Exception as e:
-        logger.error(f"Error linking account: {e}")
+        logger.error(f"Error linking telegram account: {e}")
         return False
 
 async def get_user_id_by_chat_id(chat_id: int) -> str | None:
@@ -456,29 +476,7 @@ async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: s
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")
 
-async def link_telegram_account(chat_id: int, link_code: str) -> bool:
-    """Links a Telegram chat ID to a web user profile using a unique link code."""
-    try:
-        # First check if the code is valid and not already linked to another chat_id
-        row = await execute_with_retry(
-            "SELECT id FROM profiles WHERE telegram_link_code = $1", 
-            link_code, 
-            is_fetchrow=True
-        )
-        
-        if not row:
-            return False
-            
-        # Update the user record with the telegram_chat_id and clear the link_code so it can't be reused
-        await execute_with_retry(
-            "UPDATE profiles SET telegram_chat_id = $1, telegram_link_code = NULL WHERE id = $2",
-            chat_id,
-            row['id']
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Error linking telegram account: {e}")
-        return False
+# Duplicate function removed
 
 async def get_user_profile(chat_id: int) -> dict | None:
     """Retrieves a user profile by their linked Telegram chat ID."""

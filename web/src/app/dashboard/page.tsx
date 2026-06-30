@@ -41,10 +41,13 @@ export default async function DashboardHome() {
 
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
-    .select("topic, generated_date_ist, supabase_path")
-    .or(`user_id.eq.${user.id},user_id.is.null`)
+    .select("topic, generated_date_ist, supabase_path, file_id")
     .order("generated_date_ist", { ascending: false })
     .limit(10);
+    
+  if (dbError) {
+    console.error("Error fetching digests:", dbError);
+  }
     
   const recentDigests = digests || [];
   const totalDigests = recentDigests.length;
@@ -172,6 +175,15 @@ export default async function DashboardHome() {
                     {row.supabase_path ? (
                       <Link 
                         href={`${publicStorageUrl}${row.supabase_path}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand text-brand hover:text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300"
+                      >
+                        <Download size={14} /> Download
+                      </Link>
+                    ) : row.file_id ? (
+                      <Link 
+                        href={`/api/download?file_id=${row.file_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 bg-brand/10 hover:bg-brand text-brand hover:text-white rounded-lg text-xs font-bold uppercase tracking-widest transition-all duration-300"
