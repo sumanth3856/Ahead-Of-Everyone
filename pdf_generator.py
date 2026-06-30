@@ -48,7 +48,7 @@ def ensure_font_exists(filename: str, url: str) -> bool:
     return False
 
 def ensure_logo_exists() -> bool:
-    logo_path = "assets/logo.png"
+    logo_path = "assets/AoE Logo.jpg"
     if os.path.exists(logo_path) and os.path.getsize(logo_path) > 0:
         return True
     # We purposefully don't try to download from broken URLs anymore.
@@ -206,7 +206,7 @@ class CustomPDF(FPDF):
             meta_text += f"   |   TOPIC: {self.custom_topic.upper()}"
             
         # Draw logo in top right corner
-        logo_path = "assets/logo.png"
+        logo_path = "assets/AoE Logo.jpg"
         logo_w = 8
         logo_h = 8
         try:
@@ -318,7 +318,7 @@ def draw_cover_page(pdf: CustomPDF, top_story: dict, custom_topic: str = None):
     pdf.cell(w, 8, date_text, align="C", ln=1, fill=True)
     
     # Logo
-    logo_path = "assets/logo.png"
+    logo_path = "assets/AoE Logo.jpg"
     has_logo = False
     try:
         if ensure_logo_exists():
