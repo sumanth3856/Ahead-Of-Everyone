@@ -930,6 +930,63 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
 
 
 
+async def handle_realtime_command(command_row: dict, app: Application) -> None:
+    """Process a single admin command received via the Postgres LISTEN/NOTIFY channel."""
+    cmd_id = command_row.get('id')
+    command_type = command_row.get('command')
+    payload = command_row.get('payload', {})
+    
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+    
+    logger.info(f"[ADMIN WORKER] Processing real-time command {cmd_id}: {command_type}")
+    
+    # Build a minimal context-like object so scheduled_broadcast can access bot_data
+    class _FakeContext:
+        def __init__(self, application):
+            self.bot = application.bot
+            self.bot_data = application.bot_data
+    
+    fake_ctx = _FakeContext(app)
+    
+    try:
+        if command_type == "broadcast_digests":
+            await database.update_admin_command_status(cmd_id, "completed")
+            def noop_progress(*args, **kwargs): pass
+            await scheduled_broadcast(fake_ctx, force_fresh=True, progress_callback=noop_progress)
+        elif command_type == "update_telegram_token":
+            new_token = payload.get("new_token")
+            if new_token:
+                env_path = ".env"
+                lines = []
+                if os.path.exists(env_path):
+                    with open(env_path, "r") as f:
+                        lines = f.readlines()
+                token_replaced = False
+                with open(env_path, "w") as f:
+                    for line in lines:
+                        if line.startswith("TELEGRAM_BOT_TOKEN="):
+                            f.write(f"TELEGRAM_BOT_TOKEN={new_token}\n")
+                            token_replaced = True
+                        else:
+                            f.write(line)
+                    if not token_replaced:
+                        f.write(f"TELEGRAM_BOT_TOKEN={new_token}\n")
+                await database.update_admin_command_status(cmd_id, "completed")
+                logger.info("Bot token updated. Initiating self-restart via os.execv...")
+                os.execv(sys.executable, ['python'] + sys.argv)
+            else:
+                await database.update_admin_command_status(cmd_id, "failed", "No new_token provided")
+        else:
+            await database.update_admin_command_status(cmd_id, "failed", f"Unknown command: {command_type}")
+    except Exception as e:
+        logger.error(f"[ADMIN WORKER] Error executing command {cmd_id}: {e}")
+        await database.update_admin_command_status(cmd_id, "failed", str(e))
+
+
 async def post_init(app: Application) -> None:
     """Initialize the database during bot startup."""
     await database.init_db()
@@ -937,6 +994,11 @@ async def post_init(app: Application) -> None:
     app.bot_data['request_queue'] = asyncio.Queue()
     app.bot_data['queue_list'] = []
     app.bot_data['queue_worker_tasks'] = [safe_create_task(queue_worker(app)) for _ in range(3)]
+    
+    # Start the real-time Postgres listener here (event loop is running inside post_init)
+    async def _command_wrapper(command_row):
+        await handle_realtime_command(command_row, app)
+    safe_create_task(database.listen_for_commands(_command_wrapper))
     
     # Register global/default commands for all users
     try:
@@ -1034,15 +1096,6 @@ def build_bot() -> Application:
     broadcast_time = time(hour=10, minute=0, tzinfo=ist_tz)
     # 3600s = 1 hr grace time. If bot was offline and wakes up at 4 PM, skip missed 10 AM run.
     job_queue.run_daily(scheduled_broadcast, broadcast_time, job_kwargs={'misfire_grace_time': 3600})
-    
-    # Start polling for admin commands every 5 seconds
-    # We no longer poll. We will set up a real-time Postgres listener in the main app startup hook.
-    
-    # Start the real-time Postgres listener for admin commands
-    async def wrapper(command_row):
-        await handle_realtime_command(command_row, app)
-    
-    safe_create_task(database.listen_for_commands(wrapper))
     
     return app
 

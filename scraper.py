@@ -79,16 +79,21 @@ async def load_sent_registry() -> List[Dict]:
         await _init_registry_cache()
         return _registry_cache
 
-async def save_sent_registry() -> None:
-    async with _registry_lock:
-        registry_copy = list(_registry_cache) if _registry_cache else []
+async def _save_registry_snapshot(snapshot: list) -> None:
+    """Internal: write a pre-captured snapshot to disk. Does NOT acquire the lock."""
     def _save():
         try:
             with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-                json.dump(registry_copy, f, indent=2, ensure_ascii=False)
+                json.dump(snapshot, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error saving registry: {e}")
     await asyncio.to_thread(_save)
+
+async def save_sent_registry() -> None:
+    """Public API: acquires lock, snapshots, then writes to disk."""
+    async with _registry_lock:
+        snapshot = list(_registry_cache) if _registry_cache else []
+    await _save_registry_snapshot(snapshot)
 
 def prune_registry(registry: List[Dict]) -> List[Dict]:
     global _url_set, _title_set
@@ -145,6 +150,8 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict], jaccard_t
     return False
 
 async def register_sent_stories(stories: List[Dict]) -> None:
+    global _registry_cache
+    snapshot = None
     async with _registry_lock:
         await _init_registry_cache()
         now_str = datetime.now(timezone.utc).isoformat()
@@ -162,12 +169,13 @@ async def register_sent_stories(stories: List[Dict]) -> None:
             if url: _url_set.add(url)
             if title: _title_set.add(title.lower().strip())
             
-        global _registry_cache
         _registry_cache = prune_registry(_registry_cache)
+        # Capture snapshot while lock is held so disk write is consistent
+        snapshot = list(_registry_cache)
         
-    # Trigger background save without blocking the lock
-    asyncio.create_task(save_sent_registry())
-    logger.info(f"Registered {len(stories)} articles in memory and triggered background disk sync.")
+    # Trigger background save AFTER releasing the lock to avoid deadlock
+    asyncio.create_task(_save_registry_snapshot(snapshot))
+    logger.info(f"Registered {len(stories)} articles in registry and pruned old entries.")
 
 def clean_json_content(content: str) -> str:
     content = content.strip()
@@ -269,8 +277,7 @@ Note: The 'core_breakdown' list MUST contain exactly 2 key objects covering the 
         "openrouter/free",                       # Last Resort: Meta-router
     ]
     models = [primary_model] + backup_models
-    pending_tasks = set()
-    
+
     async def run_model(m_id):
         content = await _execute_llm_completion(m_id, system_prompt, user_msg)
         if content:
@@ -279,29 +286,50 @@ Note: The 'core_breakdown' list MUST contain exactly 2 key objects covering the 
                 return (m_id, parsed)
         return None
 
+    # Cascade-with-overlap strategy:
+    # Launch the primary model first. If it doesn't succeed within 10s, launch the next
+    # backup while still waiting for the primary — repeat. Return the first success.
+    # This avoids hammering all models simultaneously while still being fast.
+    active_tasks: set = set()
+    
     for i, m_id in enumerate(models):
         logger.info(f"[AI] Launching model: {m_id} for '{title}'")
         task = asyncio.create_task(run_model(m_id))
-        pending_tasks.add(task)
+        active_tasks.add(task)
         
-        if i < len(models) - 1:
-            done, pending_tasks = await asyncio.wait(pending_tasks, timeout=10.0, return_when=asyncio.FIRST_COMPLETED)
-            for d in done:
-                res = d.result()
-                if res is not None:
-                    for p in pending_tasks: p.cancel()
-                    logger.info(f"[AI] Successfully processed: {title} (Model: {res[0]})")
-                    return res[1]
-                    
-    while pending_tasks:
-        done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+        # Wait up to 10s for any active task to succeed before cascading to next model
+        # On the last model, wait indefinitely for whatever is still running
+        timeout = 10.0 if i < len(models) - 1 else None
+        try:
+            done, active_tasks = await asyncio.wait(
+                active_tasks, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+            )
+        except Exception:
+            done = set()
+
         for d in done:
-            res = d.result()
+            try:
+                res = d.result()
+            except Exception:
+                continue
             if res is not None:
-                for p in pending_tasks: p.cancel()
+                for p in active_tasks: p.cancel()
                 logger.info(f"[AI] Successfully processed: {title} (Model: {res[0]})")
                 return res[1]
-                
+
+    # Drain any remaining tasks that were still running when we exited the loop
+    while active_tasks:
+        done, active_tasks = await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for d in done:
+            try:
+                res = d.result()
+            except Exception:
+                continue
+            if res is not None:
+                for p in active_tasks: p.cancel()
+                logger.info(f"[AI] Successfully processed: {title} (Model: {res[0]})")
+                return res[1]
+
     logger.error(f"All AI models exhausted for '{title}'.")
     return None
 
