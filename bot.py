@@ -386,6 +386,67 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 import uuid
 
+PHASE_ORDER = ["Finding Stories", "Writing Summaries", "Creating PDF", "Delivering"]
+
+async def update_loading_message(message, bot_or_context, progress_state: dict, topic: str = None) -> None:
+    """
+    Continuously edits a Telegram message to show live generation progress.
+
+    Supports two call signatures used across the codebase:
+      - update_loading_message(msg, context, progress_state)          [broadcast/button flows]
+      - update_loading_message(msg, app.bot, progress_state, topic=q) [queue worker flow]
+    """
+    # Resolve the bot object regardless of which signature was used
+    from telegram.ext import ContextTypes
+    if hasattr(bot_or_context, 'bot'):
+        bot = bot_or_context.bot   # it's a context object
+    else:
+        bot = bot_or_context       # it's already a bot object
+
+    spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    tick = 0
+
+    header = f"📡 *GENERATING: {topic.upper()}*" if topic else "📡 *GENERATING DIGEST*"
+
+    while True:
+        try:
+            phase = progress_state.get("phase", "Finding Stories")
+            progress = progress_state.get("progress", 0)
+            detail = progress_state.get("detail", "Initializing...")
+            done_phases = progress_state.get("done_phases", set())
+
+            # Build phase checklist
+            phase_lines = []
+            for p in PHASE_ORDER:
+                if p in done_phases:
+                    phase_lines.append(f"  ✅ {p}")
+                elif p == phase:
+                    spin = spinner[tick % len(spinner)]
+                    phase_lines.append(f"  {spin} *{p}*")
+                else:
+                    phase_lines.append(f"  ⬜ {p}")
+
+            # Build progress bar (16 chars)
+            bar_len = 16
+            filled = int(bar_len * progress / 100)
+            bar = "█" * filled + "░" * (bar_len - filled)
+
+            text = (
+                f"{header}\n\n"
+                + "\n".join(phase_lines)
+                + f"\n\n`[{bar}]` {progress}%\n"
+                + f"_{detail}_"
+            )
+
+            await message.edit_text(text, parse_mode="Markdown")
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            pass  # Silently ignore edit conflicts (e.g. message unchanged)
+
+        tick += 1
+        await asyncio.sleep(3)
+
 async def update_queue_status(message, bot, chat_id: int, queue_list: list):
     """Dynamically updates the waiting message for users in the queue."""
     ticker_emojis = ["🔄", "⏳", "✨", "⚙️", "🚀", "⚡", "🛰️"]
