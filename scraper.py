@@ -209,7 +209,7 @@ You MUST output ONLY valid JSON matching this exact schema, with no markdown for
   "the_edge": "The critical take, market impact, or 'why this matters'. MAXIMUM 220 characters. Keep it brief and punchy.",
   "deep_dive": "An insightful quote from the article or final piece of critical context (~250 chars)."
 }
-Note: The 'core_breakdown' list MUST contain exactly 4 key objects covering the core facts of the story."""
+Note: The 'core_breakdown' list MUST contain exactly 2 key objects covering the core facts of the story."""
 
     # Build user message with social context if available
     user_msg = f"Title: {title}\nRaw Context: {raw_content}"
