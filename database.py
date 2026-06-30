@@ -137,6 +137,10 @@ async def init_db():
             except Exception as e:
                 logger.warning(f"Could not add error_msg to admin_commands: {e}")
             try:
+                await conn.execute("ALTER TABLE profiles ALTER COLUMN telegram_chat_id DROP NOT NULL;")
+            except Exception as e:
+                logger.warning(f"Could not drop NOT NULL constraint on profiles.telegram_chat_id: {e}")
+            try:
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS supabase_path TEXT;")
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
                 # Verify that the column was successfully added/exists
