@@ -18,8 +18,8 @@ export default async function DashboardLayout({
       .eq('id', user.id)
       .single();
     
-    // TEMPORARY FIX: Bypass role check since 'role' column is not in DB yet
-    isAdmin = true;
+    // TEMPORARY FIX: Use ADMIN_EMAIL env var until 'role' column is added
+    isAdmin = user.email === process.env.ADMIN_EMAIL;
   }
 
   return (

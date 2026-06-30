@@ -17,10 +17,10 @@ export default async function AdminDashboard() {
     .eq('id', user.id)
     .single();
 
-  // TEMPORARY FIX: Bypass role check because 'role' column is missing
-  // if (profile?.role !== 'admin') {
-  //   redirect("/dashboard");
-  // }
+  // TEMPORARY FIX: Use ADMIN_EMAIL env var until 'role' column is added
+  if (user.email !== process.env.ADMIN_EMAIL) {
+    redirect("/dashboard");
+  }
 
   // Fetch some basic system health stats (mocked/queried)
   const { count: usersCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
