@@ -43,8 +43,15 @@ WORD_TOKEN_RE = re.compile(r'\w+')
 HEADLINE_CLEAN_RE = re.compile(r'\s+[-|]\s+[^|-]+$')
 
 
+_registry_cache: Optional[List[Dict]] = None
+_url_set: set = set()
+_title_set: set = set()
+_registry_lock = asyncio.Lock()
 
-async def load_sent_registry() -> List[Dict]:
+async def _init_registry_cache():
+    global _registry_cache, _url_set, _title_set
+    if _registry_cache is not None:
+        return
     def _load():
         if os.path.exists(REGISTRY_FILE):
             try:
@@ -59,20 +66,37 @@ async def load_sent_registry() -> List[Dict]:
                 except Exception as backup_err:
                     logger.error(f"Could not rename corrupted registry: {backup_err}")
         return []
-    return await asyncio.to_thread(_load)
+    
+    _registry_cache = await asyncio.to_thread(_load)
+    for item in _registry_cache:
+        url = item.get('url')
+        if url: _url_set.add(url)
+        title = item.get('title')
+        if title: _title_set.add(title.lower().strip())
 
-async def save_sent_registry(registry: List[Dict]) -> None:
+async def load_sent_registry() -> List[Dict]:
+    async with _registry_lock:
+        await _init_registry_cache()
+        return _registry_cache
+
+async def save_sent_registry() -> None:
+    async with _registry_lock:
+        registry_copy = list(_registry_cache) if _registry_cache else []
     def _save():
         try:
             with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-                json.dump(registry, f, indent=2, ensure_ascii=False)
+                json.dump(registry_copy, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error saving registry: {e}")
     await asyncio.to_thread(_save)
 
 def prune_registry(registry: List[Dict]) -> List[Dict]:
+    global _url_set, _title_set
     cutoff = datetime.now(timezone.utc) - timedelta(days=REGISTRY_RETENTION_DAYS)
     pruned = []
+    _url_set.clear()
+    _title_set.clear()
+    
     for item in registry:
         try:
             item_time = datetime.fromisoformat(item['timestamp'].replace("Z", "+00:00"))
@@ -80,16 +104,21 @@ def prune_registry(registry: List[Dict]) -> List[Dict]:
                 item_time = item_time.replace(tzinfo=timezone.utc)
             if item_time >= cutoff:
                 pruned.append(item)
+                url = item.get('url')
+                if url: _url_set.add(url)
+                title = item.get('title')
+                if title: _title_set.add(title.lower().strip())
         except Exception as e:
             logger.warning(f"Dropping corrupt registry item during prune: {e}")
     return pruned
 
 def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict], jaccard_threshold: float = 0.7) -> bool:
-    if any(item.get('url') == url for item in registry):
+    # O(1) set lookups for exact matches
+    if url in _url_set:
         return True
     
     clean_title = title.lower().strip()
-    if any(item.get('title', '').lower().strip() == clean_title for item in registry):
+    if clean_title in _title_set:
         return True
         
     words_new = set(WORD_TOKEN_RE.findall(clean_title))
@@ -116,17 +145,29 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict], jaccard_t
     return False
 
 async def register_sent_stories(stories: List[Dict]) -> None:
-    registry = await load_sent_registry()
-    now_str = datetime.now(timezone.utc).isoformat()
-    for story in stories:
-        registry.append({
-            "url": story.get("url", ""),
-            "title": story.get("original_title", story.get("headline", "")),
-            "timestamp": now_str
-        })
-    registry = prune_registry(registry)
-    await save_sent_registry(registry)
-    logger.info(f"Registered {len(stories)} articles in registry and pruned old entries.")
+    async with _registry_lock:
+        await _init_registry_cache()
+        now_str = datetime.now(timezone.utc).isoformat()
+        
+        for story in stories:
+            url = story.get("url", "")
+            title = story.get("original_title", story.get("headline", ""))
+            
+            _registry_cache.append({
+                "url": url,
+                "title": title,
+                "timestamp": now_str
+            })
+            
+            if url: _url_set.add(url)
+            if title: _title_set.add(title.lower().strip())
+            
+        global _registry_cache
+        _registry_cache = prune_registry(_registry_cache)
+        
+    # Trigger background save without blocking the lock
+    asyncio.create_task(save_sent_registry())
+    logger.info(f"Registered {len(stories)} articles in memory and triggered background disk sync.")
 
 def clean_json_content(content: str) -> str:
     content = content.strip()
@@ -227,28 +268,40 @@ Note: The 'core_breakdown' list MUST contain exactly 2 key objects covering the 
         "google/gemma-4-31b-it:free",            # Fallback 3: Google-backed, 262K context
         "openrouter/free",                       # Last Resort: Meta-router
     ]
-
-    # 1. Primary Model Attempt
-    logger.info(f"[AI] Processing: {title} (Model: {primary_model})")
-    content = await _execute_llm_completion(primary_model, system_prompt, user_msg)
-    if content:
-        parsed = try_parse_json(content)
-        if parsed:
-            logger.info(f"[AI] Successfully processed: {title} (Model: {primary_model})")
-            return parsed
-
-    # 2. Sequential Backup Model Attempts
-    logger.info(f"Primary model failed. Falling back to {len(backup_models)} backup models sequentially for '{title}'...")
+    models = [primary_model] + backup_models
+    pending_tasks = set()
     
-    for model_id in backup_models:
-        logger.info(f"[AI] Processing fallback: {title} (Model: {model_id})")
-        content = await _execute_llm_completion(model_id, system_prompt, user_msg)
+    async def run_model(m_id):
+        content = await _execute_llm_completion(m_id, system_prompt, user_msg)
         if content:
             parsed = try_parse_json(content)
             if parsed:
-                logger.info(f"[AI] Successfully processed: {title} (Model: {model_id})")
-                return parsed
-            
+                return (m_id, parsed)
+        return None
+
+    for i, m_id in enumerate(models):
+        logger.info(f"[AI] Launching model: {m_id} for '{title}'")
+        task = asyncio.create_task(run_model(m_id))
+        pending_tasks.add(task)
+        
+        if i < len(models) - 1:
+            done, pending_tasks = await asyncio.wait(pending_tasks, timeout=10.0, return_when=asyncio.FIRST_COMPLETED)
+            for d in done:
+                res = d.result()
+                if res is not None:
+                    for p in pending_tasks: p.cancel()
+                    logger.info(f"[AI] Successfully processed: {title} (Model: {res[0]})")
+                    return res[1]
+                    
+    while pending_tasks:
+        done, pending_tasks = await asyncio.wait(pending_tasks, return_when=asyncio.FIRST_COMPLETED)
+        for d in done:
+            res = d.result()
+            if res is not None:
+                for p in pending_tasks: p.cancel()
+                logger.info(f"[AI] Successfully processed: {title} (Model: {res[0]})")
+                return res[1]
+                
     logger.error(f"All AI models exhausted for '{title}'.")
     return None
 
@@ -373,7 +426,7 @@ async def fetch_full_article_text(url: str) -> str:
                 return ""
             
         def parse_html(html):
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = BeautifulSoup(html, 'lxml')
             for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
                 script.extract()
             paragraphs = soup.find_all('p')
@@ -839,25 +892,19 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
             pool.insert(0, candidates[u_idx])
         return item
 
-    # Slot 1: The Apex
-    apex = await pick_scrapable_from(social_pool)
-    if apex:
-        selected_items.append(apex)
+    # Run first 4 slots concurrently to massively speed up web scraping
+    slots_futures = [
+        asyncio.create_task(pick_scrapable_from(social_pool)),
+        asyncio.create_task(pick_scrapable_from(tech_pool)),
+        asyncio.create_task(pick_scrapable_from(science_medical_pool)),
+        asyncio.create_task(pick_scrapable_from(agri_weather_pool))
+    ]
     
-    # Slot 2: Tech – top tech RSS story
-    tech_pick = await pick_scrapable_from(tech_pool)
-    if tech_pick:
-        selected_items.append(tech_pick)
+    slot_results = await asyncio.gather(*slots_futures, return_exceptions=True)
     
-    # Slot 3: Science / Medical / Pharma
-    sci_med_pick = await pick_scrapable_from(science_medical_pool)
-    if sci_med_pick:
-        selected_items.append(sci_med_pick)
-    
-    # Slot 4: Agriculture / Weather / Climate
-    agri_weather_pick = await pick_scrapable_from(agri_weather_pool)
-    if agri_weather_pick:
-        selected_items.append(agri_weather_pick)
+    for pick in slot_results:
+        if isinstance(pick, dict):
+            selected_items.append(pick)
     
     # Slot 5: Best remaining from ANY pool (round-robin)
     remaining_pools = [social_pool, tech_pool, science_medical_pool, agri_weather_pool]
@@ -882,7 +929,7 @@ async def fetch_dynamic_news(limit: int = 5, progress_callback=None) -> List[Dic
     
     async def process_item(idx, item):
         # Stagger requests slightly to avoid hitting aggressive instant rate limits
-        await asyncio.sleep(idx * 2.5)
+        await asyncio.sleep(idx * 0.5)
         res = await fetch_story_details(item)
         processed_count[0] += 1
         if progress_callback:
@@ -932,7 +979,7 @@ async def fetch_targeted_news(query: str, limit: int = 5, progress_callback=None
     
     async def process_item(idx, item):
         # Stagger requests slightly to avoid hitting aggressive instant rate limits
-        await asyncio.sleep(idx * 2.5)
+        await asyncio.sleep(idx * 0.5)
         res = await fetch_story_details(item)
         processed_count[0] += 1
         if progress_callback:
