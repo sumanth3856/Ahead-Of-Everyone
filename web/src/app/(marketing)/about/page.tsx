@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { motion, Variants } from "framer-motion";
+import { m as motion, Variants } from "framer-motion";
 import { SpatialCard } from "@/components/ui/SpatialCard";
 
 export default function AboutPage() {
@@ -74,7 +74,7 @@ export default function AboutPage() {
               <div className="absolute top-0 right-0 w-24 h-24 bg-surface-hover rounded-bl-[2.5rem] -z-10 group-hover:bg-brand/10 transition-colors duration-500" />
               <h3 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-foreground tracking-wide">Zero Maintenance</h3>
               <p className="text-muted text-sm sm:text-base leading-relaxed font-light">
-                The architecture is designed to run indefinitely without human intervention. Automated cron schedules, fallback LLM routing, and resilient database queries ensure the intelligence keeps flowing.
+                The architecture is designed to run indefinitely without human intervention. Automated cron schedules, fallback LLM routing, and resilient database queries ensure the newsletter keeps flowing.
               </p>
             </SpatialCard>
           </motion.div>
@@ -84,7 +84,7 @@ export default function AboutPage() {
               <div className="absolute top-0 right-0 w-24 h-24 bg-surface-hover rounded-bl-[2.5rem] -z-10 group-hover:bg-brand/10 transition-colors duration-500" />
               <h3 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4 text-foreground tracking-wide">Absolute Privacy</h3>
               <p className="text-muted text-sm sm:text-base leading-relaxed font-light">
-                Your data is your own. The intelligence pipeline runs directly to your secure Telegram client. No middlemen, no tracking, just pure signal.
+                Your data is your own. The service runs directly to your secure Telegram client. No middlemen, no tracking, just pure signal.
               </p>
             </SpatialCard>
           </motion.div>

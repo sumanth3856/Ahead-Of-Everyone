@@ -3,7 +3,7 @@
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { Sun, Moon } from "lucide-react";
-import { motion } from "framer-motion";
+import { m as motion } from "framer-motion";
 
 export default function ThemeToggle() {
   const [mounted, setMounted] = useState(false);

@@ -2,8 +2,9 @@
 
 import { Zap, Database, Cpu, CheckCircle2, Lock, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { motion, Variants } from "framer-motion";
-import { SpatialCard } from "@/components/ui/SpatialCard";
+import { m as motion, Variants } from "framer-motion";
+import dynamic from "next/dynamic";
+const SpatialCard = dynamic(() => import("@/components/ui/SpatialCard").then(mod => mod.SpatialCard), { ssr: false });
 import { MagneticButton } from "@/components/ui/MagneticButton";
 
 export default function ServicesPage() {
@@ -42,7 +43,7 @@ export default function ServicesPage() {
             Access Levels
           </div>
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter mb-6 leading-tight text-foreground">
-            Intelligence <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand via-brand-light to-brand text-glow">Protocols</span>
+            Our <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand via-brand-light to-brand text-glow">Services</span>
           </h1>
           <p className="text-lg sm:text-xl text-muted max-w-2xl mx-auto font-light leading-relaxed">
             Choose the tier that matches your required signal-to-noise ratio.
@@ -73,7 +74,7 @@ export default function ServicesPage() {
                   <h2 className="text-2xl font-bold tracking-wide text-foreground">Data API</h2>
                 </div>
                 <p className="text-muted text-sm mb-8 flex-grow leading-relaxed">
-                  Raw firehose access. Plug our scraped intelligence directly into your own dashboards.
+                  Raw firehose access. Plug our scraped data directly into your own dashboards.
                 </p>
                 <div className="mb-8">
                   <span className="text-3xl font-extrabold text-foreground tracking-tight">TBA</span>
@@ -100,7 +101,7 @@ export default function ServicesPage() {
               <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-foreground mb-4">The Digest</h2>
               
               <p className="text-muted text-sm sm:text-base mb-8 flex-grow leading-relaxed">
-                The core protocol. A daily, highly-curated tech magazine sent directly to your Telegram. Built for executives and engineers who value their time.
+                Our core service. A daily, highly-curated tech magazine sent directly to your Telegram. Built for executives and engineers who value their time.
               </p>
               
               <div className="mb-10 flex items-baseline border-b border-border-subtle pb-8">

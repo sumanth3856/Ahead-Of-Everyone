@@ -37,7 +37,7 @@ export default async function SettingsPage() {
         <h1 className="text-2xl font-bold tracking-widest text-foreground uppercase">
           Settings
         </h1>
-        <p className="text-muted text-sm mt-1">Configure your intelligence pipeline and personal identity.</p>
+        <p className="text-muted text-sm mt-1">Configure your newsletter and personal identity.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

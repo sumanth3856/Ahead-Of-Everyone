@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { motion, useMotionValue, useSpring, useTransform, useMotionTemplate, HTMLMotionProps } from "framer-motion";
+import { m as motion, useMotionValue, useSpring, useTransform, HTMLMotionProps } from "framer-motion";
 
 interface SpatialCardProps extends HTMLMotionProps<"div"> {
   children: React.ReactNode;
@@ -79,17 +79,8 @@ export function SpatialCard({ children, className = "", depth = 10, ...props }: 
       } ${className}`}
       {...props}
     >
-      <motion.div
-        className="pointer-events-none absolute -inset-px rounded-3xl opacity-0 transition duration-500 group-hover:opacity-100 z-0"
-        style={{
-          background: useMotionTemplate`
-            radial-gradient(
-              600px circle at ${mouseX}px ${mouseY}px,
-              var(--color-brand-glow),
-              transparent 80%
-            )
-          `,
-        }}
+      <div
+        className="pointer-events-none absolute -inset-px rounded-3xl opacity-0 transition duration-500 group-hover:opacity-100 z-0 bg-transparent"
       />
       {/* Deep inner shadow to emphasize 3D */}
       <div className="absolute inset-0 rounded-3xl pointer-events-none" style={{ boxShadow: "var(--spatial-inset)" }} />

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Newspaper, Settings, LogOut, TerminalSquare, Menu, X, ShieldAlert } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "@/components/ThemeToggle";
 import { logout } from "@/app/auth/actions";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -70,8 +70,8 @@ export default function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
                 onClick={() => setIsOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-300 font-bold ${
                   isActive 
-                    ? "bg-brand/10 border-l-4 border-brand text-brand" 
-                    : "text-muted hover:text-brand hover:bg-surface"
+                    ? "bg-brand/20 border-l-4 border-brand text-white" 
+                    : "text-muted hover:text-foreground hover:bg-surface"
                 }`}
               >
                 <item.icon className="h-5 w-5" />
@@ -83,12 +83,12 @@ export default function Sidebar({ isAdmin = false }: { isAdmin?: boolean }) {
         
         <div className="p-4 border-t border-border-subtle bg-surface/50 space-y-4">
           <div className="flex items-center justify-between px-4">
-            <span className="text-sm font-bold text-muted">Theme</span>
+            <span className="text-sm font-bold text-foreground">Theme</span>
             <ThemeToggle />
           </div>
           <form action={logout} className="w-full">
             <SubmitButton 
-              className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-muted hover:text-red-600 hover:bg-red-500/10 transition-all duration-300 text-left cursor-pointer font-bold"
+              className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-foreground hover:text-red-500 hover:bg-red-500/10 transition-all duration-300 text-left cursor-pointer font-bold"
               loadingText="Signing Out"
             >
               <LogOut className="h-5 w-5" />

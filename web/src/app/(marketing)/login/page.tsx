@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Mail, Lock, AlertCircle } from "lucide-react";
-import { motion, Variants } from "framer-motion";
+import { m as motion, Variants } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { toast } from "sonner";
@@ -51,8 +51,8 @@ function LoginFormContent() {
         <div className="transform-style-3d">
           <SpatialCard depth={10} className="w-full p-8 sm:p-10 rounded-[2.5rem] border border-border-subtle shadow-spatial relative z-10">
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold tracking-tight text-foreground mb-2">Welcome Back</h2>
-          <p className="text-muted text-sm">Enter your credentials to access the intelligence portal.</p>
+              <h1 className="text-4xl font-bold tracking-tight text-foreground mb-2">Welcome Back</h1>
+          <p className="text-muted text-sm">Enter your credentials to access your dashboard.</p>
         </div>
 
 
@@ -116,7 +116,7 @@ function LoginFormContent() {
         </form>
 
         <p className="mt-8 text-center text-sm text-muted">
-          Don't have an access protocol?{" "}
+          Don't have an account?{" "}
           <Link href="/signup" className="font-semibold text-brand hover:text-brand/80 transition-colors">
             Initialize here
           </Link>

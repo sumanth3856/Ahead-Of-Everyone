@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Mail, Lock, User, AlertCircle } from "lucide-react";
-import { motion, Variants } from "framer-motion";
+import { m as motion, Variants } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import { toast } from "sonner";
@@ -51,8 +51,8 @@ function SignupFormContent() {
         <div className="transform-style-3d">
           <SpatialCard depth={10} className="w-full p-8 sm:p-10 rounded-[2.5rem] border border-border-subtle shadow-spatial relative z-10">
             <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold tracking-tight text-foreground mb-2">Create Protocol</h2>
-              <p className="text-muted text-sm">Register to initialize your intelligence dashboard.</p>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground mb-2">Create Account</h2>
+              <p className="text-muted text-sm">Register to initialize your dashboard.</p>
             </div>
 
 
@@ -121,14 +121,14 @@ function SignupFormContent() {
             className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-brand hover:opacity-90 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand transition-all duration-300 mt-6"
             loadingText="Creating..."
           >
-            Create Protocol <ArrowRight size={18} />
+            Create Account <ArrowRight size={18} />
           </SubmitButton>
         </form>
 
         <p className="mt-8 text-center text-sm text-muted">
-          Already have an access protocol?{" "}
+          Already have an account?{" "}
           <Link href="/login" className="font-semibold text-brand hover:text-brand/80 transition-colors">
-            Authenticate
+            Login
           </Link>
         </p>
           </SpatialCard>

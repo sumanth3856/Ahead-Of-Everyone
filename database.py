@@ -142,6 +142,8 @@ async def init_db():
                 logger.warning(f"Could not drop NOT NULL constraint on profiles.telegram_chat_id: {e}")
             try:
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS supabase_path TEXT;")
+                await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_digests_date ON digests_cache (generated_date_ist DESC);")
                 await conn.execute("ALTER TABLE digests_cache ADD COLUMN IF NOT EXISTS topic_embedding vector(384);")
                 # Verify that the column was successfully added/exists
                 col_check = await conn.fetchrow("""
@@ -528,3 +530,30 @@ async def update_admin_command_status(cmd_id: int, status: str, error_msg: str =
     except Exception as e:
         logger.error(f"Error updating admin command status: {e}")
         return False
+
+async def listen_for_commands(callback):
+    """Sets up a continuous Postgres listener for real-time admin commands."""
+    try:
+        pool = await get_pool()
+        if pool is None:
+            logger.error("Cannot listen for commands without a database connection.")
+            return
+
+        # We must acquire a dedicated connection that stays open indefinitely to listen
+        conn = await pool.acquire()
+        
+        def handle_notification(connection, pid, channel, payload):
+            import json
+            try:
+                command_row = json.loads(payload)
+                # Call the async callback by creating a task
+                asyncio.create_task(callback(command_row))
+            except Exception as e:
+                logger.error(f"Error parsing notification payload: {e}")
+        
+        await conn.add_listener('admin_commands_channel', handle_notification)
+        logger.info("[DB] Listening for real-time admin commands on 'admin_commands_channel'...")
+        
+        # Note: This connection intentionally remains acquired and open
+    except Exception as e:
+        logger.error(f"Failed to setup listen_for_commands: {e}")

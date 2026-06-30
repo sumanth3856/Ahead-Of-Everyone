@@ -17,7 +17,7 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-muted text-sm max-w-xs font-medium">
-              A fully autonomous, AI-powered tech journalism pipeline and intelligence agency. Five minutes. Then you are ahead of everyone.
+              A fully autonomous, AI-powered tech newsletter. Five minutes. Then you are ahead of everyone.
             </p>
           </div>
           

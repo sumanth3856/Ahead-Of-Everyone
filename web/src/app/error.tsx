@@ -49,7 +49,7 @@ export default function ErrorPage({
         </h2>
         
         <p className="text-muted text-sm md:text-base mb-8">
-          A critical failure occurred in the intelligence pipeline. Our technicians have been notified. Please try again.
+          A critical failure occurred. Our technicians have been notified. Please try again.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

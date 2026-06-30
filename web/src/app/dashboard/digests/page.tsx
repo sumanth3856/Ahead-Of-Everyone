@@ -27,7 +27,7 @@ export default async function DigestsPage() {
 
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
-    .select("topic, generated_date_ist, supabase_path, file_id")
+    .select("topic, generated_date_ist, supabase_path, file_id, created_at")
     .order("generated_date_ist", { ascending: false });
     
   const allDigests = digests || [];
@@ -40,7 +40,7 @@ export default async function DigestsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-widest text-foreground uppercase flex items-center gap-3">
             <FileText className="text-brand w-6 h-6" />
-            Intelligence Archive
+            Newsletter Archive
           </h1>
           <p className="text-muted text-sm mt-1">Access your entire history of generated tech digests.</p>
         </div>
@@ -53,8 +53,8 @@ export default async function DigestsPage() {
       {allDigests.length === 0 ? (
         <SpatialCard depth={5} className="glass rounded-[2rem] p-12 border border-border-subtle shadow-sm flex flex-col items-center justify-center text-center mt-8">
           <FileText className="h-16 w-16 text-muted mb-4 opacity-50" />
-          <h2 className="text-xl font-bold text-foreground mb-2">No Intel Found</h2>
-          <p className="text-muted max-w-md">Your intelligence pipeline hasn't generated any digests yet. Ensure your Telegram is linked and wait for the scheduled broadcast.</p>
+          <h2 className="text-xl font-bold text-foreground mb-2">No Newsletters Found</h2>
+          <p className="text-muted max-w-md">Your newsletter hasn't generated any issues yet. Ensure your Telegram is linked and wait for the scheduled broadcast.</p>
         </SpatialCard>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -82,18 +82,30 @@ export default async function DigestsPage() {
                   <div className="flex items-center gap-2 text-xs font-bold text-muted uppercase tracking-widest bg-surface px-3 py-1.5 rounded-full border border-border-subtle">
                     <Calendar className="h-3 w-3" />
                     {digest.generated_date_ist}
+                    {digest.created_at && (
+                      <span className="opacity-70 ml-1">
+                        {new Date(digest.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
                 </div>
                 
-                <h3 className="text-xl font-bold text-foreground leading-tight mb-2 flex-grow">
-                  {digest.topic}
+                {/* Formatted Title */}
+                <h3 className="text-2xl font-bold text-foreground leading-tight mb-2 flex-grow capitalize">
+                  {(() => {
+                    const cleanTopic = (digest.topic || "").replace(/^v4:/, "").replace(/_/g, " ");
+                    if (cleanTopic.toLowerCase() === "latest") {
+                      return `Daily Tech Digest`;
+                    }
+                    return cleanTopic;
+                  })()}
                 </h3>
                 
-                <div className="pt-6 mt-4 border-t border-border-subtle flex gap-3">
+                <div className="pt-4 mt-2 border-t border-border-subtle flex gap-3">
                   <Link 
                     href={fileUrl} 
                     target="_blank"
-                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-foreground text-background font-bold text-sm tracking-wide hover:opacity-90 transition-opacity shadow-spatial"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-foreground text-background font-bold text-sm tracking-wide hover:opacity-90 transition-all shadow-sm"
                   >
                     Read Intel <ExternalLink className="w-4 h-4" />
                   </Link>
@@ -101,7 +113,7 @@ export default async function DigestsPage() {
                     href={fileUrl} 
                     download
                     target="_blank"
-                    className="w-12 h-12 flex items-center justify-center rounded-xl bg-surface border border-border-subtle hover:bg-brand hover:border-brand hover:text-white transition-all text-muted"
+                    className="w-12 h-12 shrink-0 flex items-center justify-center rounded-xl bg-surface border border-border-subtle hover:bg-brand hover:border-brand hover:text-white transition-all text-muted hover:text-white"
                   >
                     <Download className="w-5 h-5" />
                   </Link>

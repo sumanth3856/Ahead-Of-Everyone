@@ -33,7 +33,7 @@ export default function NotFound() {
         </h2>
         
         <p className="text-muted text-sm md:text-base mb-8">
-          The requested intel could not be located in our systems. The pipeline might have been rerouted or the link is classified.
+          The requested page could not be located.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

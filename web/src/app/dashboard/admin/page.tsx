@@ -88,7 +88,7 @@ export default async function AdminDashboard() {
             <Cpu className="w-32 h-32 text-blue-500" />
           </div>
           <div className="flex items-center justify-between mb-4 relative z-10">
-            <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Intel Dispatched</h3>
+            <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Newsletters Sent</h3>
             <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
               <Cpu className="h-4 w-4" />
             </div>

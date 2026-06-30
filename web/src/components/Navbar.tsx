@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { m as motion, AnimatePresence } from "framer-motion";
 import { Menu, X, TerminalSquare } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
 import { logout } from "@/app/auth/actions";

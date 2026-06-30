@@ -1,5 +1,6 @@
 import Sidebar from "@/components/dashboard/Sidebar";
 import Header from "@/components/dashboard/Header";
+import RealtimeSync from "@/components/dashboard/RealtimeSync";
 import { createClient } from "@/utils/supabase/server";
 
 export default async function DashboardLayout({
@@ -23,7 +24,8 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen bg-background overflow-hidden selection:bg-brand/30">
+      <RealtimeSync />
       <Sidebar isAdmin={isAdmin} />
       <div className="flex-1 flex flex-col overflow-hidden relative z-10">
         <Header />

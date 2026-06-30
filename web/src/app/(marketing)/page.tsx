@@ -4,10 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Zap, Database, Cpu, Shield, Globe } from "lucide-react";
-import { motion, Variants } from "framer-motion";
-import { SpatialCard } from "@/components/ui/SpatialCard";
+import { m as motion, Variants } from "framer-motion";
+import dynamic from "next/dynamic";
+const SpatialCard = dynamic(() => import("@/components/ui/SpatialCard").then(mod => mod.SpatialCard), { ssr: false });
 import { MagneticButton } from "@/components/ui/MagneticButton";
-import { LiveTerminal } from "@/components/ui/LiveTerminal";
 
 export default function Home() {
   const router = useRouter();
@@ -52,7 +52,7 @@ export default function Home() {
   };
 
   const title1 = "Spatial.".split("");
-  const title2 = "Intelligence.".split("");
+  const title2 = "Newsletter.".split("");
 
   return (
     <div className="flex flex-col items-center overflow-hidden bg-background">
@@ -73,7 +73,7 @@ export default function Home() {
           className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center w-full"
         >
           <motion.div variants={fadeUp} className="inline-block mb-10 px-5 py-2 rounded-full border border-brand/20 bg-brand/5 text-brand font-bold tracking-widest uppercase text-xs sm:text-sm shadow-sm">
-            Intelligence Pipeline Active
+            Newsletter Active
           </motion.div>
           
           {/* Hyper-Kinetic Typography */}
@@ -124,14 +124,11 @@ export default function Home() {
               className="px-10 py-5 rounded-2xl bg-foreground text-background font-bold tracking-wider shadow-spatial active:scale-95 transition-all duration-300 flex items-center gap-3 group relative overflow-hidden border border-border-subtle"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-brand to-brand-light opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <span className="relative z-10 group-hover:text-white transition-colors duration-300">Access Protocols</span>
+              <span className="relative z-10 group-hover:text-white transition-colors duration-300">Get Started</span>
               <ArrowRight size={20} className="relative z-10 group-hover:text-white group-hover:translate-x-2 transition-all duration-300" />
             </MagneticButton>
           </motion.div>
 
-          <motion.div variants={fadeUp}>
-            <LiveTerminal />
-          </motion.div>
         </motion.div>
       </section>
 
@@ -148,8 +145,8 @@ export default function Home() {
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 perspective-[1200px]"
         >
           <motion.div variants={fadeUp} className="text-center mb-12 sm:mb-16">
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter mb-6 text-foreground">Core <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-light text-glow">Protocols</span></h2>
-            <p className="text-muted text-lg sm:text-xl font-light">Our expanding suite of intelligence services.</p>
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter mb-6 text-foreground">Core <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-light text-glow">Services</span></h2>
+            <p className="text-muted text-lg sm:text-xl font-light">Our expanding suite of services.</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-6 gap-8 sm:gap-12 auto-rows-fr">
@@ -163,8 +160,8 @@ export default function Home() {
                 <p className="text-muted text-base sm:text-xl mb-8 sm:mb-10 flex-grow leading-relaxed font-light">
                   Our flagship product. A stunning light-mode PDF magazine delivered to Telegram every morning, curated by our Multi-Model AI Cascade.
                 </p>
-                <Link href="/services" aria-label="Access Protocol for Daily Tech Digest" className="text-brand font-bold tracking-widest uppercase flex items-center gap-3 group-hover:gap-5 transition-all duration-300 w-fit text-sm">
-                  Access Protocol <ArrowRight size={18} />
+                <Link href="/services" aria-label="Get Started with Daily Tech Digest" className="text-brand font-bold tracking-widest uppercase flex items-center gap-3 group-hover:gap-5 transition-all duration-300 w-fit text-sm">
+                  Get Started <ArrowRight size={18} />
                 </Link>
               </SpatialCard>
             </motion.div>
@@ -191,7 +188,7 @@ export default function Home() {
                 </div>
                 <h3 className="text-2xl font-bold mb-4 text-foreground tracking-tight">Model Cascade</h3>
                 <p className="text-muted text-base flex-grow mb-8 font-light">
-                  Intelligent routing of prompts across specialized neural networks for optimal output.
+                  Smart routing of prompts across specialized neural networks for optimal output.
                 </p>
                 <span className="text-muted text-xs font-bold uppercase tracking-widest bg-background px-4 py-2 rounded-full w-fit border border-border-subtle">Restricted</span>
               </SpatialCard>

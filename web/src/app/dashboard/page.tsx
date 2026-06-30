@@ -4,8 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import LinkTelegramClient from "@/components/dashboard/LinkTelegramClient";
 import { SpatialCard } from "@/components/ui/SpatialCard";
-import { RadarChartWidget } from "@/components/ui/RadarChartWidget";
-import { StreakCalendarWidget } from "@/components/ui/StreakCalendarWidget";
+import { LiveClock } from "@/components/ui/LiveClock";
 
 export default async function DashboardHome() {
   const supabase = await createClient();
@@ -41,7 +40,7 @@ export default async function DashboardHome() {
 
   const { data: digests, error: dbError } = await supabaseAdmin
     .from("digests_cache")
-    .select("topic, generated_date_ist, supabase_path, file_id")
+    .select("topic, generated_date_ist, supabase_path, file_id, created_at")
     .order("generated_date_ist", { ascending: false })
     .limit(10);
     
@@ -55,21 +54,35 @@ export default async function DashboardHome() {
   const publicStorageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/daily-digests/`;
 
   return (
-    <div className="max-w-6xl mx-auto flex flex-col gap-8">
-      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-2 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-widest text-foreground uppercase">
-            Welcome, <span className="text-brand">{firstName}</span>
-          </h1>
-          <p className="text-muted text-sm mt-1">Intelligence pipeline active. All systems nominal.</p>
+    <main className="max-w-6xl mx-auto flex flex-col gap-8 pb-12 animate-in fade-in duration-500">
+      <header className="relative overflow-hidden rounded-3xl bg-surface/50 border border-border-subtle p-8 shadow-sm">
+        <div className="absolute inset-0 bg-gradient-to-r from-brand/10 via-transparent to-transparent opacity-50" />
+        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+          <div className="flex flex-col gap-1.5">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
+              Welcome, <span className="bg-gradient-to-r from-brand to-brand-light bg-clip-text text-transparent">{firstName}</span>
+            </h1>
+            <p className="text-muted font-medium mb-1 flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-brand"></span>
+              </span>
+              Newsletter active. All systems nominal.
+            </p>
+            <div className="bg-background/50 inline-flex px-3 py-1.5 rounded-full border border-border-subtle backdrop-blur-sm w-fit mt-2">
+              <LiveClock />
+            </div>
+          </div>
+          <div className="flex flex-col items-end shrink-0">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl border border-green-500/30 bg-green-500/10 text-green-600 text-xs tracking-widest uppercase font-bold shadow-[0_0_15px_rgba(34,197,94,0.15)]">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+              Secure Connection
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-green-500/30 bg-green-500/10 text-green-600 text-xs tracking-widest uppercase font-bold shrink-0">
-          <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></div>
-          Secure Connection
-        </div>
-      </div>
+      </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <section aria-label="Overview Metrics" className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Connection Status Card */}
         <SpatialCard depth={5} className="glass rounded-[2rem] p-6 border border-border-subtle lg:col-span-1 shadow-sm relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 translate-x-4 -translate-y-4 pointer-events-none">
@@ -119,7 +132,7 @@ export default async function DashboardHome() {
               <h3 className="text-muted text-sm uppercase tracking-wider font-bold">Digests Available</h3>
             </div>
             <p className="text-3xl font-extrabold text-foreground">{totalDigests}</p>
-            <p className="text-xs text-brand font-semibold mt-2">Latest intelligence reports</p>
+            <p className="text-xs text-brand font-semibold mt-2">Latest newsletters</p>
           </SpatialCard>
         )}
 
@@ -133,44 +146,52 @@ export default async function DashboardHome() {
             </p>
             <p className="text-xs text-muted font-semibold mt-2">Time in IST</p>
           </SpatialCard>
-        </div>
-
-        {/* Visual Metrics Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-          <RadarChartWidget />
-          <StreakCalendarWidget />
-        </div>
-
+      </section>
 
       {/* Recent Digests Table */}
-      <SpatialCard depth={2} className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">
+      <section aria-label="Recent Transmissions">
+        <SpatialCard depth={2} className="glass rounded-[2rem] border border-border-subtle overflow-hidden shadow-sm">
         <div className="p-6 border-b border-border-subtle flex justify-between items-center bg-surface">
           <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Recent Transmissions</h2>
           <span className="text-xs text-muted font-bold uppercase tracking-widest">Live Feed</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
+            <caption className="sr-only">Recent Transmissions Live Feed</caption>
             <thead className="text-xs text-muted uppercase bg-surface/50 border-b border-border-subtle">
               <tr>
-                <th className="px-6 py-4 font-bold tracking-wider">Topic</th>
-                <th className="px-6 py-4 font-bold tracking-wider">Date Generated (IST)</th>
-                <th className="px-6 py-4 font-bold tracking-wider text-right">Action</th>
+                <th scope="col" className="px-6 py-4 font-bold tracking-wider">Topic</th>
+                <th scope="col" className="px-6 py-4 font-bold tracking-wider">Date Generated (IST)</th>
+                <th scope="col" className="px-6 py-4 font-bold tracking-wider text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/5">
               {recentDigests.length === 0 && !dbError && (
                 <tr>
                   <td colSpan={3} className="px-6 py-8 text-center text-muted italic">
-                    No intelligence digests available yet.
+                    No newsletters available yet.
                   </td>
                 </tr>
               )}
               {recentDigests.map((row, i) => (
-                <tr key={i} className="hover:bg-surface transition-colors group stagger-row">
-                  <td className="px-6 py-4 font-bold text-foreground group-hover:text-brand transition-colors capitalize">
-                    {row.topic === "latest" ? "Daily Tech Briefing" : row.topic}
+                <tr key={i} className="hover:bg-surface transition-all duration-300 group hover:scale-[1.01] hover:shadow-sm border-b border-transparent hover:border-brand/20 relative z-10 bg-background/50 hover:bg-surface/80">
+                  <td scope="row" className="px-6 py-5 font-bold text-foreground group-hover:text-brand transition-colors capitalize">
+                    {(() => {
+                      const cleanTopic = (row.topic || "").replace(/^v4:/, "").replace(/_/g, " ");
+                      if (cleanTopic.toLowerCase() === "latest") {
+                        return `Daily Tech Digest`;
+                      }
+                      return cleanTopic;
+                    })()}
                   </td>
-                  <td className="px-6 py-4 text-muted font-medium whitespace-nowrap">{row.generated_date_ist}</td>
+                  <td className="px-6 py-4 text-muted font-medium whitespace-nowrap">
+                    {row.generated_date_ist}
+                    {row.created_at && (
+                      <span className="ml-2 text-xs opacity-70">
+                        {new Date(row.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right">
                     {row.supabase_path ? (
                       <Link 
@@ -199,7 +220,8 @@ export default async function DashboardHome() {
             </tbody>
           </table>
         </div>
-      </SpatialCard>
-    </div>
+        </SpatialCard>
+      </section>
+    </main>
   );
 }
