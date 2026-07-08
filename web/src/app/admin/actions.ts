@@ -12,7 +12,7 @@ export async function getAdminTelemetry() {
 
   const [usersResponse, digestsResponse] = await Promise.all([
     supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }),
-    supabaseAdmin.from('digests_cache').select('*').order('created_at', { ascending: false })
+    supabaseAdmin.from('digests_cache').select('id, topic, file_id, generated_date_ist, created_at, user_id, supabase_path').order('created_at', { ascending: false })
   ]);
 
   return {
