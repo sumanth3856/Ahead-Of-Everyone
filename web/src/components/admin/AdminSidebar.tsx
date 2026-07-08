@@ -79,9 +79,9 @@ export default function AdminSidebar() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setIsOpen(false)}
-                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-bold ${
+                  className={`group flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-bold relative overflow-hidden ${
                     isActive 
-                      ? "bg-brand text-white shadow-md shadow-brand/25 scale-[1.02] translate-x-1" 
+                      ? "bg-brand/10 text-brand border border-brand/20 shadow-sm scale-[1.02] translate-x-1 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-8 before:w-1.5 before:bg-brand before:rounded-r-full" 
                       : "text-muted hover:bg-surface hover:text-foreground hover:translate-x-1 hover:shadow-sm border border-transparent hover:border-border-subtle"
                   }`}
                 >

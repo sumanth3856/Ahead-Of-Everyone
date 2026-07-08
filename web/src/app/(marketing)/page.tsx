@@ -58,7 +58,7 @@ export default function Home() {
     <main className="flex flex-col items-center overflow-hidden bg-background">
       
       {/* Minimal Hero Section */}
-      <section aria-label="Hero Introduction" className="relative w-full pt-24 sm:pt-28 lg:pt-32 pb-4 sm:pb-8 flex items-center justify-center">
+      <section aria-label="Hero Introduction" className="relative w-full pt-16 sm:pt-20 lg:pt-24 pb-4 sm:pb-8 flex items-center justify-center">
         
         {/* Simple Gradient Background */}
         <div className="absolute inset-0 w-full h-full -z-10 overflow-hidden flex items-center justify-center">

@@ -196,16 +196,16 @@ export function AdminOperationsClient() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
       {/* Broadcast Override */}
-      <SpatialCard depth={8} className="glass rounded-3xl border border-border-subtle shadow-sm flex flex-col relative overflow-hidden group">
+      <SpatialCard depth={8} className="glass rounded-3xl border border-border-subtle shadow-lg flex flex-col relative overflow-hidden group hover:border-brand/30 transition-colors bg-surface/40">
         {/* Top accent — changes color based on phase */}
-        <div className={`absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent to-transparent transition-all duration-500 ${
-          phase === "armed" ? "via-orange-500/80" :
-          phase === "broadcasting" ? "via-yellow-500/80 animate-pulse" :
-          phase === "success" ? "via-green-500/80" :
-          "via-red-500/60"
+        <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent to-transparent transition-all duration-500 ${
+          phase === "armed" ? "via-orange-500" :
+          phase === "broadcasting" ? "via-yellow-500 animate-pulse" :
+          phase === "success" ? "via-green-500" :
+          "via-brand/80"
         }`} />
         
-        <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-grow">
+        <div className="p-6 sm:p-8 lg:p-10 flex flex-col flex-grow">
           <div className="flex items-center gap-4 mb-6">
             <div className="relative">
               <div className={`absolute inset-0 blur-lg rounded-full transition-opacity duration-500 ${
@@ -214,27 +214,27 @@ export function AdminOperationsClient() {
                 phase === "success" ? "bg-green-500/30 opacity-100" :
                 "bg-red-500/20 opacity-0 group-hover:opacity-100"
               }`} />
-              <div className={`p-3.5 rounded-2xl border relative z-10 transition-colors duration-300 ${
-                phase === "armed" ? "bg-orange-500/10 border-orange-500/20" :
-                phase === "success" ? "bg-green-500/10 border-green-500/20" :
-                "bg-red-500/10 border-red-500/20"
+              <div className={`p-4 rounded-2xl border-2 relative z-10 transition-colors duration-300 ${
+                phase === "armed" ? "bg-orange-500/10 border-orange-500/30" :
+                phase === "success" ? "bg-green-500/10 border-green-500/30" :
+                "bg-brand/10 border-brand/30 group-hover:border-brand/50 group-hover:bg-brand/20"
               }`}>
                 {phase === "success" ? (
-                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                  <CheckCircle2 className="h-8 w-8 text-green-500" />
                 ) : phase === "broadcasting" ? (
-                  <Loader2 className="h-6 w-6 text-yellow-500 animate-spin" />
+                  <Loader2 className="h-8 w-8 text-yellow-500 animate-spin" />
                 ) : (
-                  <Send className={`h-6 w-6 ${phase === "armed" ? "text-orange-500" : "text-red-500"}`} />
+                  <Send className={`h-8 w-8 ${phase === "armed" ? "text-orange-500" : "text-brand"}`} />
                 )}
               </div>
             </div>
             <div>
-              <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Global Broadcast</h2>
-              <p className="text-xs text-muted mt-0.5">Force immediate digest generation</p>
+              <h2 className="font-extrabold tracking-widest uppercase text-base text-foreground">Global Broadcast</h2>
+              <p className="text-sm text-muted mt-1 font-medium">Force immediate digest generation</p>
             </div>
           </div>
           
-          <p className="text-sm text-muted mb-8 leading-relaxed flex-grow">
+          <p className="text-base text-muted/90 mb-10 leading-relaxed flex-grow font-medium">
             Manually override the scheduled pipeline and force the Python backend to generate and broadcast the Daily Digest to all linked agents immediately.
           </p>
 
@@ -243,37 +243,38 @@ export function AdminOperationsClient() {
       </SpatialCard>
 
       {/* Crisis Management (Token Update) */}
-      <SpatialCard depth={8} className="glass rounded-3xl border border-border-subtle shadow-sm flex flex-col relative overflow-hidden group">
+      <SpatialCard depth={8} className="glass rounded-3xl border border-border-subtle shadow-lg flex flex-col relative overflow-hidden group hover:border-orange-500/30 transition-colors bg-surface/40">
         {/* Subtle top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-orange-500/60 to-transparent" />
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-orange-500/80 to-transparent" />
         
-        <div className="p-4 sm:p-6 lg:p-8 flex flex-col flex-grow">
+        <div className="p-6 sm:p-8 lg:p-10 flex flex-col flex-grow">
           <div className="flex items-center gap-4 mb-6">
             <div className="relative">
-              <div className="absolute inset-0 bg-orange-500/20 blur-lg rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <div className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-500/20 relative z-10">
-                <Terminal className="h-6 w-6 text-orange-500" />
+              <div className="absolute inset-0 bg-orange-500/20 blur-xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="p-4 rounded-2xl bg-orange-500/10 border-2 border-orange-500/30 group-hover:bg-orange-500/20 group-hover:border-orange-500/50 transition-colors relative z-10">
+                <Terminal className="h-8 w-8 text-orange-500" />
               </div>
             </div>
             <div>
-              <h2 className="font-bold tracking-wider uppercase text-sm text-foreground">Crisis Management</h2>
-              <p className="text-xs text-muted mt-0.5">Emergency bot token rotation</p>
+              <h2 className="font-extrabold tracking-widest uppercase text-base text-foreground">Crisis Management</h2>
+              <p className="text-sm text-muted mt-1 font-medium">Emergency bot token rotation</p>
             </div>
           </div>
           
-          <p className="text-sm text-muted mb-8 leading-relaxed flex-grow">
+          <p className="text-base text-muted/90 mb-10 leading-relaxed flex-grow font-medium">
             In the event of a Telegram Bot ban or token compromise, input the new bot token here. The backend will automatically reboot with the new credentials.
           </p>
 
           <div className="flex flex-col gap-3">
             <div className="relative group/input">
-              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted group-focus-within/input:text-orange-500 transition-colors" />
+              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted group-focus-within/input:text-orange-500 transition-colors" />
               <input 
                 type="text" 
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder="Paste new bot token (e.g. 1234:ABC...)" 
-                className="w-full bg-surface border border-border-subtle rounded-2xl py-4 pl-11 pr-4 text-sm text-foreground placeholder:text-muted/60 focus:border-orange-500/50 focus:ring-2 focus:ring-orange-500/20 transition-all outline-none"
+                aria-label="Telegram Bot Token"
+                className="w-full bg-surface/80 border-2 border-border-subtle rounded-2xl py-4 pl-12 pr-4 text-base font-medium text-foreground placeholder:text-muted/60 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/20 focus:bg-surface hover:border-border transition-all outline-none"
               />
             </div>
             <button 

@@ -6,11 +6,11 @@ export default function AdminOperationsPage() {
     <div className="max-w-6xl mx-auto flex flex-col gap-8 pb-20 relative">
       <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-6 gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-widest text-foreground uppercase flex items-center gap-3">
-            <Zap className="text-red-500 w-6 h-6" />
+          <h1 className="text-2xl font-black tracking-tight text-foreground uppercase flex items-center gap-3">
+            <Zap className="text-brand w-8 h-8" />
             Operations & Controls
           </h1>
-          <p className="text-muted text-sm mt-1">Manual overrides and backend configuration.</p>
+          <p className="text-muted text-sm mt-2 font-medium">Manual overrides and backend configuration.</p>
         </div>
       </div>
       
