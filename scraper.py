@@ -618,29 +618,22 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
             
         # Split fallback_text into sentences
         sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', fallback_text) if s.strip()]
-        while len(sentences) < 4:
+        while len(sentences) < 2:
             sentences.append("Additional context and verification is being compiled by our intelligence desk.")
-        if len(sentences) > 4:
-            sentences[3] = " ".join(sentences[3:])
-            sentences = sentences[:4]
+        if len(sentences) > 2:
+            sentences[1] = " ".join(sentences[1:])
+            sentences = sentences[:2]
             
-        tags = ["The update", "The details", "The impact", "The outlook"]
+        tags = ["The update", "The impact"]
         structured_data["core_breakdown"] = [
-            {"tag": tags[i], "detail": sentences[i][:250]} for i in range(4)
+            {"tag": tags[i], "detail": sentences[i][:250]} for i in range(2)
         ]
     else:
         cleaned_list = []
-        for i in range(4):
-            if i < len(raw_core):
-                c_item = raw_core[i]
-                tag = str(c_item.get("tag", "The detail")).strip().strip('\'"')
-                detail = str(c_item.get("detail", "Additional context under review.")).strip().strip('\'"')
-                cleaned_list.append({"tag": tag, "detail": detail})
-            else:
-                cleaned_list.append({
-                    "tag": "The outlook",
-                    "detail": "Additional validation and research continues as the story develops."
-                })
+        for c_item in raw_core:
+            tag = str(c_item.get("tag", "The detail")).strip().strip('\'"')
+            detail = str(c_item.get("detail", "Additional context under review.")).strip().strip('\'"')
+            cleaned_list.append({"tag": tag, "detail": detail})
         structured_data["core_breakdown"] = cleaned_list
 
     # Compute remaining text for The Edge and Deep Dive
