@@ -682,6 +682,10 @@ def generate_digest_pdf(stories: list, custom_topic: str = None, progress_callba
         return ""
         
     stories = sanitize_stories(stories)
+    if synthesis:
+        for k, v in synthesis.items():
+            if isinstance(v, str):
+                synthesis[k] = sanitize_text(v)
     
     # Use alias for page numbers
     pdf.alias_nb_pages()

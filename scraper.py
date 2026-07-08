@@ -131,10 +131,7 @@ def is_duplicate_or_rehash(title: str, url: str, registry: List[Dict], jaccard_t
         return False
         
     for item in registry:
-        # Optimization: Use precomputed token set if available to avoid O(M*N) regex executions
-        if 'token_set' not in item:
-            item['token_set'] = set(WORD_TOKEN_RE.findall(item.get('title', '').lower().strip()))
-        words_old = item['token_set']
+        words_old = set(WORD_TOKEN_RE.findall(item.get('title', '').lower().strip()))
         
         intersection = words_new.intersection(words_old)
         union = words_new.union(words_old)
