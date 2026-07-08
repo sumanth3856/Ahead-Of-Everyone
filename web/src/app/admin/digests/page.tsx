@@ -1,12 +1,35 @@
 "use client";
 
 import { Newspaper, Loader2, Database } from "lucide-react";
+import { useEffect, useState } from "react";
 import { SpatialCard } from "@/components/ui/SpatialCard";
-import { useRealtimeDigests } from "@/hooks/useRealtime";
+import { getAdminTelemetry } from "../actions";
 import { toISTTime } from "@/lib/ist";
 
 export default function AdminDigestsGrid() {
-  const { digests, loading } = useRealtimeDigests();
+  const [digests, setDigests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchTelemetry = async () => {
+      try {
+        const data = await getAdminTelemetry();
+        if (mounted) {
+          setDigests(data.digests);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch telemetry:", err);
+      }
+    };
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-8 pb-20 relative">

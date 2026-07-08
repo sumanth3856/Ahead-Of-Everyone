@@ -55,10 +55,10 @@ export default function Home() {
   const title2 = "Newsletter.".split("");
 
   return (
-    <div className="flex flex-col items-center overflow-hidden bg-background">
+    <main className="flex flex-col items-center overflow-hidden bg-background">
       
       {/* Minimal Hero Section */}
-      <section className="relative w-full min-h-[70svh] pt-24 sm:pt-32 pb-8 sm:pb-12 flex items-center justify-center">
+      <section aria-label="Hero Introduction" className="relative w-full pt-24 sm:pt-28 lg:pt-32 pb-4 sm:pb-8 flex items-center justify-center">
         
         {/* Simple Gradient Background */}
         <div className="absolute inset-0 w-full h-full -z-10 overflow-hidden flex items-center justify-center">
@@ -81,7 +81,7 @@ export default function Home() {
             variants={textRevealContainer}
             initial="hidden"
             animate="show"
-            className="text-4xl sm:text-7xl lg:text-[7.5rem] font-black tracking-tighter mb-8 text-foreground leading-[0.9] select-none"
+            className="text-fluid-1 font-black tracking-tighter mb-8 text-foreground select-none"
           >
             <div className="overflow-hidden pt-8 -mt-8 pb-4 pr-4 inline-block cursor-default">
               {title1.map((char, index) => (
@@ -96,8 +96,8 @@ export default function Home() {
                 </motion.span>
               ))}
             </div>
-            <br className="hidden sm:block" />
-            <div className="overflow-hidden pt-8 -mt-8 pb-6 pr-4 inline-block cursor-default">
+            <br className="block" />
+            <div className="overflow-hidden pt-4 sm:pt-8 -mt-4 sm:-mt-8 pb-6 pr-4 inline-block cursor-default">
               {title2.map((char, index) => (
                 <motion.span 
                   key={index} 
@@ -112,7 +112,7 @@ export default function Home() {
             </div>
           </motion.h1>
           
-          <motion.p variants={fadeUp} className="text-lg sm:text-2xl text-muted max-w-2xl mx-auto mb-14 leading-relaxed font-light">
+          <motion.p variants={fadeUp} className="text-fluid-p text-muted max-w-2xl mx-auto mb-8 sm:mb-12 font-light px-4 sm:px-0">
             A fully autonomous, AI-powered tech journalism pipeline. We scrape, analyze, and deliver a premium magazine straight to you.
           </motion.p>
           
@@ -121,7 +121,8 @@ export default function Home() {
             <MagneticButton 
               strength={40} 
               onClick={() => router.push('/login')}
-              className="px-6 py-4 sm:px-10 sm:py-5 rounded-2xl bg-foreground text-background font-bold tracking-wider shadow-spatial active:scale-95 transition-all duration-300 flex items-center gap-3 group relative overflow-hidden border border-border-subtle"
+              aria-label="Get Started with Daily Tech Digest"
+              className="px-5 py-3 sm:px-10 sm:py-5 rounded-xl sm:rounded-2xl bg-foreground text-background font-bold tracking-wider shadow-spatial active:scale-95 transition-all duration-300 flex items-center gap-2 sm:gap-3 group relative overflow-hidden border border-border-subtle text-sm sm:text-base"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-brand to-brand-light opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <span className="relative z-10 group-hover:text-white transition-colors duration-300">Get Started</span>
@@ -133,7 +134,7 @@ export default function Home() {
       </section>
 
       {/* Services Spatial Stagger Section */}
-      <section className="w-full py-16 sm:py-24 relative z-20">
+      <section aria-labelledby="services-heading" className="w-full pt-4 sm:pt-8 pb-16 sm:pb-24 relative z-20">
         {/* Background depth for services */}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-surface/50 to-background -z-10" />
         
@@ -144,9 +145,9 @@ export default function Home() {
           variants={staggerContainer}
           className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 perspective-[1200px]"
         >
-          <motion.div variants={fadeUp} className="text-center mb-12 sm:mb-16">
-            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter mb-6 text-foreground">Core <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-light text-glow">Services</span></h2>
-            <p className="text-muted text-lg sm:text-xl font-light">Our expanding suite of services.</p>
+          <motion.div variants={fadeUp} className="text-center mb-10 sm:mb-16">
+            <h2 id="services-heading" className="text-fluid-2 font-black tracking-tighter mb-4 sm:mb-6 text-foreground">Core <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-brand-light text-glow">Services</span></h2>
+            <p className="text-fluid-3 text-muted font-light">Our expanding suite of services.</p>
           </motion.div>
 
           <div className="grid grid-cols-1 md:grid-cols-6 gap-8 sm:gap-12 auto-rows-fr">
@@ -210,6 +211,6 @@ export default function Home() {
           </div>
         </motion.div>
       </section>
-    </div>
+    </main>
   );
 }

@@ -57,6 +57,26 @@ body {
 }
 
 /* Custom Utilities */
+@utility text-fluid-1 {
+  font-size: clamp(2.5rem, 5vw + 1.5rem, 5.5rem);
+  line-height: 1;
+}
+
+@utility text-fluid-2 {
+  font-size: clamp(2rem, 4vw + 1rem, 4rem);
+  line-height: 1.1;
+}
+
+@utility text-fluid-3 {
+  font-size: clamp(1.5rem, 3vw + 0.75rem, 2.5rem);
+  line-height: 1.2;
+}
+
+@utility text-fluid-p {
+  font-size: clamp(1rem, 2vw + 0.5rem, 1.25rem);
+  line-height: 1.6;
+}
+
 @utility glass {
   background: var(--glass-bg);
   backdrop-filter: blur(24px);

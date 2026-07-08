@@ -2,14 +2,44 @@
 
 import { ShieldCheck, Activity, ShieldAlert, Cpu, Users, Newspaper, Download } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { SpatialCard } from "@/components/ui/SpatialCard";
-import { useRealtimeUsers, useRealtimeDigests } from "@/hooks/useRealtime";
 import { toISTTime } from "@/lib/ist";
+import { getAdminTelemetry } from "./actions";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function AdminDashboardOverview() {
-  const { users, loading: loadingUsers } = useRealtimeUsers();
-  const { digests, loading: loadingDigests } = useRealtimeDigests();
+  const [users, setUsers] = useState<any[]>([]);
+  const [digests, setDigests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const fetchTelemetry = async () => {
+      try {
+        const data = await getAdminTelemetry();
+        if (mounted) {
+          setUsers(data.users);
+          setDigests(data.digests);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch telemetry:", err);
+      }
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 3000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const loadingUsers = loading;
+  const loadingDigests = loading;
 
   return (
     <main className="max-w-6xl mx-auto flex flex-col gap-10 pb-20 relative">
@@ -20,8 +50,8 @@ export default function AdminDashboardOverview() {
       {/* Header */}
       <header className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-2 gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight uppercase flex items-center gap-3">
-            <ShieldAlert className="text-brand w-8 h-8" />
+          <h1 className="text-fluid-3 font-extrabold tracking-tight uppercase flex items-center gap-3">
+            <ShieldAlert className="text-brand w-8 h-8 shrink-0" />
             <span className="text-foreground drop-shadow-sm">
               Command Center
             </span>

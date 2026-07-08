@@ -421,11 +421,6 @@ async def set_cached_file_id_exact(topic: str, file_id: str, supabase_path: str 
         await execute_with_retry("""
             INSERT INTO digests_cache (topic, file_id, generated_date_ist, supabase_path, user_id)
             VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (topic) DO UPDATE
-              SET file_id             = EXCLUDED.file_id,
-                  generated_date_ist  = EXCLUDED.generated_date_ist,
-                  supabase_path       = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path),
-                  user_id             = EXCLUDED.user_id
         """, versioned_topic, file_id, current_ist_date, supabase_path, user_id)
     except Exception as e:
         logger.error(f"Error writing exact cache: {e}")
@@ -483,12 +478,6 @@ async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: s
         await execute_with_retry("""
             INSERT INTO digests_cache (topic, file_id, generated_date_ist, topic_embedding, supabase_path, user_id)
             VALUES ($1, $2, $3, $4::vector, $5, $6)
-            ON CONFLICT (topic) DO UPDATE
-              SET file_id             = EXCLUDED.file_id,
-                  generated_date_ist  = EXCLUDED.generated_date_ist,
-                  topic_embedding     = COALESCE(EXCLUDED.topic_embedding, digests_cache.topic_embedding),
-                  supabase_path       = COALESCE(EXCLUDED.supabase_path, digests_cache.supabase_path),
-                  user_id             = EXCLUDED.user_id
         """, versioned_topic, file_id, current_ist_date, vec_str, supabase_path, user_id)
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")

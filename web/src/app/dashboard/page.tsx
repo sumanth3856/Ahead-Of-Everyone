@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { ShieldCheck, Activity, Send, Clock, Download, FileText, AlertCircle } from "lucide-react";
 import { createClient } from "@/utils/supabase/server";
 import Link from "next/link";
@@ -64,7 +67,7 @@ export default async function DashboardHome() {
         <div className="absolute inset-0 bg-gradient-to-r from-brand/10 via-transparent to-transparent opacity-50" />
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex flex-col gap-1.5">
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
+            <h1 className="text-fluid-3 font-extrabold tracking-tight text-foreground">
               Welcome, <span className="bg-gradient-to-r from-brand to-brand-light bg-clip-text text-transparent">{firstName}</span>
             </h1>
             <p className="text-muted font-medium mb-1 flex items-center gap-2">
