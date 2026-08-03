@@ -1179,13 +1179,50 @@ if __name__ == "__main__":
     
     if webhook_url:
         port = int(os.environ.get("PORT", "10000"))
-        logger.info(f"Starting bot in WEBHOOK mode on port {port}...")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            webhook_url=webhook_url,
-            drop_pending_updates=True
-        )
+        logger.info(f"Starting bot with custom AIOHTTP web server on port {port}...")
+        
+        from aiohttp import web
+        
+        async def telegram_webhook(request: web.Request) -> web.Response:
+            """Handle incoming Telegram updates."""
+            await app.update_queue.put(
+                Update.de_json(data=await request.json(), bot=app.bot)
+            )
+            return web.Response()
+
+        async def health_check(request: web.Request) -> web.Response:
+            """Health check endpoint for cron-job.org."""
+            return web.json_response({"status": "ok", "message": "Backend is running"})
+            
+        async def run_custom_webhook():
+            # Set webhook URL for Telegram
+            await app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+            
+            # Setup aiohttp application
+            web_app = web.Application()
+            # The webhook URL from render usually doesn't have a path, so we accept POST on /
+            web_app.router.add_post("/", telegram_webhook)
+            
+            # Add health check endpoints
+            web_app.router.add_get("/", health_check)
+            web_app.router.add_get("/health", health_check)
+            web_app.router.add_get("/api/health", health_check)
+            
+            runner = web.AppRunner(web_app)
+            await runner.setup()
+            site = web.TCPSite(runner, "0.0.0.0", port)
+            await site.start()
+            
+            logger.info("AIOHTTP server started and listening for webhooks and health checks.")
+            
+            # Start the PTB application and block forever
+            async with app:
+                await app.start()
+                await asyncio.Event().wait()
+                
+        # Run the async main loop
+        asyncio.run(run_custom_webhook())
+        
     else:
         logger.info("No WEBHOOK_URL detected. Starting bot in POLLING mode. Press Ctrl+C to stop.")
         app.run_polling(drop_pending_updates=True)
