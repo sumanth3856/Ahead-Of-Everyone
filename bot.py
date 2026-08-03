@@ -204,7 +204,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 pass
             return await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="Markdown")
         else:
-            await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="Markdown")
+            try:
+                await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode="Markdown")
+            except Exception as e:
+                if "Message is not modified" not in str(e):
+                    logger.warning(f"Error editing message: {e}")
             return query.message
             
     if action == "latest":
@@ -1217,6 +1221,7 @@ if __name__ == "__main__":
             
             # Start the PTB application and block forever
             async with app:
+                await post_init(app)
                 await app.start()
                 await asyncio.Event().wait()
                 
