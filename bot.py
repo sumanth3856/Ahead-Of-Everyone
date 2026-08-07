@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from functools import wraps
-from aiohttp import web
 from storage import upload_pdf_to_supabase
 from ui_templates import get_main_menu, get_back_keyboard, get_about_menu, get_stats_menu
 
@@ -227,7 +226,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         user_id = await database.get_user_id_by_chat_id(chat_id)
         cached_file_id = await database.get_cached_file_id_exact("latest", user_id=user_id)
         if cached_file_id:
-            caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
+            caption = "✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
             sent_file_id = await send_newsletter_document(
                 bot=context.bot,
                 chat_id=chat_id,
@@ -311,19 +310,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         is_admin = user_id == admin_id
         
         help_text = (
-            f"*[ HELP & COMMANDS ]*\n"
-            f"Here is what I can do for you:\n\n"
-            f"⚡ `/start` » Open the main menu\n"
-            f"🌐 `/news <topic>` » Search for news on a specific topic\n"
-            f"🔗 `/link <code>` » Link your account to the Dashboard\n"
-            f"📖 `/help` » Read this help guide\n\n"
+            "*[ HELP & COMMANDS ]*\n"
+            "Here is what I can do for you:\n\n"
+            "⚡ `/start` » Open the main menu\n"
+            "🌐 `/news <topic>` » Search for news on a specific topic\n"
+            "🔗 `/link <code>` » Link your account to the Dashboard\n"
+            "📖 `/help` » Read this help guide\n\n"
         )
         if is_admin:
             help_text += (
-                f"⚙️ *Admin Commands:*\n"
-                f"• `/status` » Check if the system is running well\n"
-                f"• `/stats` » View total number of subscribers\n"
-                f"• `/broadcast` » Send today's newsletter to everyone\n\n"
+                "⚙️ *Admin Commands:*\n"
+                "• `/status` » Check if the system is running well\n"
+                "• `/stats` » View total number of subscribers\n"
+                "• `/broadcast` » Send today's newsletter to everyone\n\n"
             )
         keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
         await edit_or_reply(text=help_text, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -361,7 +360,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     progress_state["done_phases"].add(mark_done)
                     
             loading_msg = await edit_or_reply(text="⏳ Preparing global broadcast. Please standby...")
-            ticker_task = safe_create_task(update_loading_message(loading_msg, context, progress_state))
+            ticker_task = safe_create_task(update_loading_message(loading_msg, progress_state))
             try:
                 await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
             except Exception as e:
@@ -397,21 +396,10 @@ import uuid
 
 PHASE_ORDER = ["Finding Stories", "Writing Summaries", "Creating PDF", "Delivering"]
 
-async def update_loading_message(message, bot_or_context, progress_state: dict, topic: str = None) -> None:
+async def update_loading_message(message, progress_state: dict, topic: str = None) -> None:
     """
     Continuously edits a Telegram message to show live generation progress.
-
-    Supports two call signatures used across the codebase:
-      - update_loading_message(msg, context, progress_state)          [broadcast/button flows]
-      - update_loading_message(msg, app.bot, progress_state, topic=q) [queue worker flow]
     """
-    # Resolve the bot object regardless of which signature was used
-    from telegram.ext import ContextTypes
-    if hasattr(bot_or_context, 'bot'):
-        bot = bot_or_context.bot   # it's a context object
-    else:
-        bot = bot_or_context       # it's already a bot object
-
     spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     tick = 0
 
@@ -529,7 +517,7 @@ async def _process_single_job(app: Application, job: dict):
     progress_state = {
         "phase": "Finding Stories",
         "progress": 0,
-        "detail": f"🌐 Initializing search...",
+        "detail": "🌐 Initializing search...",
         "done_phases": set()
     }
     
@@ -542,7 +530,7 @@ async def _process_single_job(app: Application, job: dict):
         if mark_done:
             progress_state["done_phases"].add(mark_done)
             
-    ticker_task = safe_create_task(update_loading_message(message, app.bot, progress_state, topic=query))
+    ticker_task = safe_create_task(update_loading_message(message, progress_state, topic=query))
     
     pdf_filename = None
     cached_file_id = None
@@ -588,7 +576,7 @@ async def _process_single_job(app: Application, job: dict):
     else:
         if cached_file_id or (pdf_filename and os.path.exists(pdf_filename)):
             try:
-                caption = f"✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
+                caption = "✅ *NEWS READY* | Here is your daily newsletter! Enjoy reading."
                 if query:
                     caption = f"✅ *SEARCH FINISHED* | Sending your newsletter about *{query}*..."
                     
@@ -619,7 +607,7 @@ async def _process_single_job(app: Application, job: dict):
         else:
             logger.warning(f"[QUEUE] Generation failed/not found for {target_name}.")
             back_keyboard = get_back_keyboard()
-            await app.bot.send_message(chat_id=chat_id, text=f"😔 *NOT FOUND* | Sorry, I couldn't find enough news right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
+            await app.bot.send_message(chat_id=chat_id, text="😔 *NOT FOUND* | Sorry, I couldn't find enough news right now. Try another topic!", reply_markup=back_keyboard, parse_mode="Markdown")
             
     logger.info(f"[QUEUE] Finished processing job {job['job_id']}")
     app.bot_data["request_queue"].task_done()
@@ -715,7 +703,7 @@ async def admin_broadcast_command(update: Update, context: ContextTypes.DEFAULT_
             progress_state["done_phases"].add(mark_done)
             
     loading_msg = await update.message.reply_text("⏳ *Starting the global broadcast generation...*", parse_mode="Markdown")
-    ticker_task = safe_create_task(update_loading_message(loading_msg, context, progress_state))
+    ticker_task = safe_create_task(update_loading_message(loading_msg, progress_state))
     try:
         await scheduled_broadcast(context, force_fresh=True, progress_callback=progress_callback)
     except Exception as e:
@@ -819,20 +807,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     is_admin = user_id == admin_id
     
     help_text = (
-        f"*[ HELP & COMMANDS ]*\n"
-        f"Here is what I can do for you:\n\n"
-        f"⚡ `/start` » Open the main menu\n"
-        f"🌐 `/news <topic>` » Search for news on a specific topic\n"
-        f"🔗 `/link <code>` » Link your account to the Dashboard\n"
-        f"📖 `/help` » Read this help guide\n\n"
+        "*[ HELP & COMMANDS ]*\n"
+        "Here is what I can do for you:\n\n"
+        "⚡ `/start` » Open the main menu\n"
+        "🌐 `/news <topic>` » Search for news on a specific topic\n"
+        "🔗 `/link <code>` » Link your account to the Dashboard\n"
+        "📖 `/help` » Read this help guide\n\n"
     )
     
     if is_admin:
         help_text += (
-            f"⚙️ *Admin Commands:*\n"
-            f"• `/status` » Check if the system is running well\n"
-            f"• `/stats` » View total number of subscribers\n"
-            f"• `/broadcast` » Send today's newsletter to everyone\n\n"
+            "⚙️ *Admin Commands:*\n"
+            "• `/status` » Check if the system is running well\n"
+            "• `/stats` » View total number of subscribers\n"
+            "• `/broadcast` » Send today's newsletter to everyone\n\n"
         )
     
     keyboard = [
@@ -965,10 +953,7 @@ async def scheduled_broadcast(context: ContextTypes.DEFAULT_TYPE, force_fresh: b
         caption = f"📰 *{BRAND_NAME}* | Digest for {datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%b %d, %Y')} IST\n\nInnovating the future, today."
         
         success_count = 0
-        pretty_filename = None
-        if pdf_filename:
-            pretty_filename = os.path.basename(pdf_filename).replace("_", " ")
-            
+        
         for idx, chat_id in enumerate(subscribers):
             # Check for cancellation before sleeping or sending
             if context.bot_data.get("broadcast_cancelled", False):

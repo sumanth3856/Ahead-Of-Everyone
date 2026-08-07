@@ -1,5 +1,4 @@
 import os
-import aiohttp
 import logging
 from database import get_http_session
 import datetime

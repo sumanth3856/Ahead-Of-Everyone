@@ -3,7 +3,6 @@ import json
 import logging
 import feedparser
 import re
-import aiohttp
 import asyncio
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta, timezone
@@ -53,7 +52,7 @@ _title_set: set = set()
 _registry_lock = asyncio.Lock()
 
 async def _init_registry_cache():
-    global _registry_cache, _url_set, _title_set
+    global _registry_cache
     if _registry_cache is not None:
         return
     def _load():
@@ -100,7 +99,6 @@ async def save_sent_registry() -> None:
     await _save_registry_snapshot(snapshot)
 
 def prune_registry(registry: List[Dict]) -> List[Dict]:
-    global _url_set, _title_set
     cutoff = datetime.now(timezone.utc) - timedelta(days=REGISTRY_RETENTION_DAYS)
     pruned = []
     _url_set.clear()

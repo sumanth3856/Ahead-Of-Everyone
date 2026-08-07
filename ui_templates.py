@@ -35,8 +35,8 @@ def get_main_menu(first_name: str, is_subscribed: bool = False):
 
 def get_about_menu(is_subscribed: bool = False):
     about_text = (
-        f"*[ ABOUT THIS BOT ]*\n\n"
-        f"This bot is powered by smart AI. It automatically searches for major news stories, rewrites them to be quick and easy to read, and designs a premium PDF newsletter just for you."
+        "*[ ABOUT THIS BOT ]*\n\n"
+        "This bot is powered by smart AI. It automatically searches for major news stories, rewrites them to be quick and easy to read, and designs a premium PDF newsletter just for you."
     )
     keyboard = [[InlineKeyboardButton("📰 Get Latest Digest", callback_data="latest")]]
     if is_subscribed:
@@ -117,7 +117,7 @@ async def update_loading_message(message, bot, progress_state, topic=None) -> No
             )
             
             # Use specific cancel callback for query vs latest
-            cancel_data = f"cancel_query" if topic else "cancel_latest"
+            cancel_data = "cancel_query" if topic else "cancel_latest"
             cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 Cancel Generation", callback_data=cancel_data)]])
             
             await message.edit_text(loading_text, parse_mode="Markdown", reply_markup=cancel_keyboard)

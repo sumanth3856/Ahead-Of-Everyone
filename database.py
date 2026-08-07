@@ -482,7 +482,7 @@ async def set_cached_file_id_semantic(topic: str, file_id: str, supabase_path: s
     except Exception as e:
         logger.error(f"Error writing semantic cache: {e}")
 
-# Duplicate function removed
+
 
 async def get_user_profile(chat_id: int) -> dict | None:
     """Retrieves a user profile by their linked Telegram chat ID."""

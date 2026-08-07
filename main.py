@@ -5,8 +5,6 @@ import time
 import asyncio
 from dotenv import load_dotenv
 
-# Initialize config/logging
-import config
 from scraper import fetch_dynamic_news, register_sent_stories, fetch_targeted_news, generate_editorial_synthesis
 from pdf_generator import generate_digest_pdf
 from telegram_client import send_pdf_to_telegram
