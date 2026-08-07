@@ -34,6 +34,10 @@ def init_openai_client():
 
 client = init_openai_client()
 
+# Global cap on concurrent OpenRouter calls to avoid free-tier rate limits.
+# Without this, N stories x M staggered models can burst 25+ simultaneous requests.
+_openrouter_semaphore = asyncio.Semaphore(5)
+
 REGISTRY_FILE = "sent_articles.json"
 REGISTRY_RETENTION_DAYS = 7
 
@@ -170,8 +174,9 @@ async def register_sent_stories(stories: List[Dict]) -> None:
         # Capture snapshot while lock is held so disk write is consistent
         snapshot = list(_registry_cache)
         
-    # Trigger background save AFTER releasing the lock to avoid deadlock
-    asyncio.create_task(_save_registry_snapshot(snapshot))
+    # Persist the snapshot AFTER releasing the lock to avoid deadlock.
+    # Await it so the write is durable before the caller proceeds.
+    await _save_registry_snapshot(snapshot)
     logger.info(f"Registered {len(stories)} articles in registry and pruned old entries.")
 
 def clean_json_content(content: str) -> str:
@@ -221,11 +226,12 @@ def try_parse_json(content: str) -> Optional[Dict]:
 async def _execute_llm_completion(model_id: str, system_prompt: str, user_msg: str, timeout: int = 25) -> Optional[str]:
     """Helper function to execute OpenRouter/OpenAPI completion call."""
     try:
-        response = await client.chat.completions.create(
-            model=model_id,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
-            timeout=timeout,
-        )
+        async with _openrouter_semaphore:
+            response = await client.chat.completions.create(
+                model=model_id,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}],
+                timeout=timeout,
+            )
         if hasattr(response, 'choices') and response.choices:
             return response.choices[0].message.content.strip()
     except Exception as e:
@@ -427,6 +433,11 @@ async def fetch_full_article_text(url: str) -> str:
             },
             timeout=15
         ) as resp:
+            if resp.status == 429:
+                # Jina is rate-limiting us. Skip the direct-scrape fallback so we
+                # don't double the outbound load on news sites during throttling.
+                logger.warning(f"Jina Reader rate limited (429) for {url}. Skipping fallback.")
+                return ""
             resp.raise_for_status()
             text = await resp.text()
             if is_block_or_error_page(text):
@@ -610,6 +621,8 @@ async def fetch_story_details(item: Dict) -> Optional[Dict]:
         else:
             if full_text and len(full_text) > 100:
                 snippet = full_text
+            else:
+                snippet = ""
             brief = structured_data["the_brief"]
             remaining_text = snippet[len(brief):].strip() if snippet.startswith(brief) else snippet
             if not remaining_text:

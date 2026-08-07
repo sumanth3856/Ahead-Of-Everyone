@@ -44,17 +44,10 @@ export async function insertAdminCommand(command: string, payload: any = {}) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Unauthorized");
 
-  // Verify admin role
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  // TEMPORARY FIX: Bypass role check because 'role' column is missing
-  // if (profile?.role !== 'admin') {
-  //   throw new Error("Admin access required.");
-  // }
+  // TEMPORARY FIX: Use ADMIN_EMAIL env var until 'role' column is active everywhere
+  if (user.email !== process.env.ADMIN_EMAIL) {
+    throw new Error("Admin access required.");
+  }
 
   const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
   const supabaseAdmin = createSupabaseClient(

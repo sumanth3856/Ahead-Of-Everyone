@@ -13,6 +13,33 @@ from telegram_client import send_pdf_to_telegram
 
 logger = logging.getLogger(__name__)
 
+LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "digest_run.lock")
+LOCK_STALE_SECONDS = 45 * 60
+
+def acquire_run_lock() -> bool:
+    """Acquire a run lock to prevent concurrent pipeline executions.
+    Returns True if this run may proceed, False if another run is active."""
+    try:
+        if os.path.exists(LOCK_FILE):
+            age = time.time() - os.path.getmtime(LOCK_FILE)
+            if age < LOCK_STALE_SECONDS:
+                logger.warning("Another digest run is in progress (lock present). Aborting this run.")
+                return False
+            logger.warning("Stale run lock detected; overriding it.")
+        with open(LOCK_FILE, "w", encoding="utf-8") as f:
+            f.write(f"pid={os.getpid()}\nstarted={time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        return True
+    except Exception as e:
+        logger.error(f"Could not acquire run lock: {e}")
+        return True
+
+def release_run_lock() -> None:
+    try:
+        if os.path.exists(LOCK_FILE):
+            os.remove(LOCK_FILE)
+    except Exception as e:
+        logger.error(f"Could not release run lock: {e}")
+
 async def generate_latest_digest(limit=5, progress_callback=None) -> str | None:
     logger.info("Generating latest digest...")
     try:
@@ -108,6 +135,9 @@ async def generate_targeted_digest(query: str, limit=5, progress_callback=None) 
         return None
 
 async def main() -> None:
+    if not acquire_run_lock():
+        logger.info("Exiting because another run holds the lock.")
+        return
     logger.info("Starting AoE Tech News execution pipeline (Manual Run).")
     pdf_filename = None
     try:
@@ -131,6 +161,7 @@ async def main() -> None:
                 logger.info(f"Cleaned up manual run PDF: {pdf_filename}")
             except Exception as e:
                 logger.error(f"Failed to delete {pdf_filename}: {e}")
+        release_run_lock()
 
 if __name__ == "__main__":
     asyncio.run(main())
