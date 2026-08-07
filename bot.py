@@ -1199,10 +1199,8 @@ if __name__ == "__main__":
             return web.json_response({"status": "ok", "message": "Backend is running"})
             
         async def run_custom_webhook():
-            # Set webhook URL for Telegram
-            await app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-            
-            # Setup aiohttp application
+            # Start the aiohttp server FIRST so health checks respond during cold start,
+            # avoiding Render 503s while outbound calls to Telegram are still in flight.
             web_app = web.Application()
             # The webhook URL from render usually doesn't have a path, so we accept POST on /
             web_app.router.add_post("/", telegram_webhook)
@@ -1218,6 +1216,12 @@ if __name__ == "__main__":
             await site.start()
             
             logger.info("AIOHTTP server started and listening for webhooks and health checks.")
+            
+            # Set webhook URL for Telegram after the server is up
+            try:
+                await app.bot.set_webhook(url=webhook_url, allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+            except Exception as e:
+                logger.error(f"Failed to set Telegram webhook: {e}")
             
             # Start the PTB application and block forever
             async with app:
